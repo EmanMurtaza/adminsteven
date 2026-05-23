@@ -1,26 +1,65 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ─────────────────────────────────────────────────────────────────────────
+   Moning & Associates brand palette
+   Cream + Deep Navy + Gold — matches stevenmoning.vercel.app
+   ───────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Cream backgrounds */
+  --color-cream: #faf4e8;
+  --color-cream-100: #f5ecd9;
+  --color-cream-200: #f0e7d5;
+  --color-cream-300: #f0ddb0;
+
+  /* Navy (sidebar / nav / dark surfaces) */
+  --color-navy: #06101c;
+  --color-navy-700: #0a1424;
+  --color-navy-600: #0e1b30;
+  --color-navy-500: #16243f;
+
+  /* Gold (primary accent / CTAs / focus) */
+  --color-gold: #d4a84b;
+  --color-gold-light: #e8c879;
+  --color-gold-dark: #a07830;
+  --color-gold-pale: #f0ddb0;
+
+  /* Burgundy accent */
+  --color-burgundy: #6b1f2e;
+
+  /* Neutral text */
+  --color-ink: #1c1c1c;
+  --color-ink-soft: #4a4a4a;
+  --color-ink-mute: #7f8898;
+
+  /* Fonts */
+  --font-serif: "Cormorant Garamond", ui-serif, Georgia, serif;
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #faf4e8;
+  --foreground: #1c1c1c;
+}
+
+html {
+  background: var(--background);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+/* Subtle gold scrollbar accent */
+::selection {
+  background: rgb(212 168 75 / 0.35);
+  color: #06101c;
 }

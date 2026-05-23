@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { Suspense } from "react";
 
 function LoginForm() {
   const router = useRouter();
@@ -35,30 +34,35 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="w-full max-w-sm">
-        {/* Logo / brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-600 rounded-xl mb-4">
-            <span className="text-white font-bold text-lg">M</span>
+    <div className="min-h-screen flex items-center justify-center bg-cream px-4">
+      <div className="w-full max-w-md">
+        {/* Brand mark */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-navy-600 rounded-full mb-5 ring-4 ring-gold/20">
+            <span className="font-serif text-2xl text-gold">M</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">Moning & Associates</h1>
-          <p className="text-gray-400 text-sm mt-1">Admin Panel</p>
+          <h1 className="font-serif text-4xl text-navy tracking-tight">
+            Moning <span className="text-gold italic">&amp;</span> Associates
+          </h1>
+          <p className="text-xs uppercase tracking-[0.25em] text-ink-mute mt-3">
+            Admin Panel
+          </p>
         </div>
 
         {/* Card */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-xl">
-          <h2 className="text-lg font-semibold text-white mb-6">Sign in to continue</h2>
+        <div className="bg-white/70 backdrop-blur border border-gold/30 rounded-2xl p-8 shadow-[0_8px_40px_-12px_rgba(14,27,48,0.15)]">
+          <h2 className="font-serif text-2xl text-navy mb-1">Sign in</h2>
+          <p className="text-sm text-ink-mute mb-6">Welcome back. Please enter your credentials.</p>
 
           {error && (
-            <div className="mb-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-lg">
+            <div className="mb-5 bg-burgundy/5 border border-burgundy/30 text-burgundy text-sm px-4 py-3 rounded-lg">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wider text-ink-soft mb-2">
                 Email address
               </label>
               <input
@@ -67,13 +71,13 @@ function LoginForm() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3.5 py-2.5 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full bg-cream-100 border border-gold/40 text-navy rounded-lg px-3.5 py-2.5 text-sm placeholder-ink-mute/60 focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent transition"
                 placeholder="admin@example.com"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wider text-ink-soft mb-2">
                 Password
               </label>
               <input
@@ -82,7 +86,7 @@ function LoginForm() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3.5 py-2.5 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full bg-cream-100 border border-gold/40 text-navy rounded-lg px-3.5 py-2.5 text-sm placeholder-ink-mute/60 focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent transition"
                 placeholder="••••••••"
               />
             </div>
@@ -90,16 +94,17 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-2"
+              className="w-full bg-navy hover:bg-navy-500 disabled:opacity-60 text-cream font-medium py-3 px-4 rounded-lg text-sm tracking-wide transition-colors flex items-center justify-center gap-2 mt-4 group"
             >
-              {loading && <Loader2 size={16} className="animate-spin" />}
-              {loading ? "Signing in…" : "Sign in"}
+              {loading && <Loader2 size={16} className="animate-spin text-gold" />}
+              <span>{loading ? "Signing in…" : "Sign in"}</span>
+              {!loading && <span className="text-gold group-hover:translate-x-0.5 transition-transform">→</span>}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-xs text-gray-600 mt-6">
-          Moning &amp; Associates · DFW Real Estate Admin
+        <p className="text-center text-xs text-ink-mute mt-8 tracking-wide">
+          Moning &amp; Associates · DFW Real Estate · Est. 2006
         </p>
       </div>
     </div>

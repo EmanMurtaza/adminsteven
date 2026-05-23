@@ -33,35 +33,37 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-60 min-h-screen bg-gray-900 text-gray-100 flex flex-col">
+    <aside className="w-64 min-h-screen bg-navy text-cream flex flex-col border-r border-navy-700">
       {/* Brand */}
-      <div className="px-6 py-5 border-b border-gray-700">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">M</span>
+      <div className="px-6 py-6 border-b border-gold/15">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-gold to-gold-dark rounded-full flex items-center justify-center shrink-0 shadow-[0_4px_12px_-2px_rgba(212,168,75,0.5)]">
+            <span className="font-serif text-navy text-lg font-semibold">M</span>
           </div>
           <div>
-            <p className="text-sm font-semibold leading-tight">Moning & Associates</p>
-            <p className="text-xs text-gray-400 leading-tight">Admin Panel</p>
+            <p className="font-serif text-base leading-tight text-cream">
+              Moning <span className="text-gold italic">&amp;</span> Associates
+            </p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-gold/70 mt-1">Admin Panel</p>
           </div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-5 space-y-1">
         {nav.map(({ label, href, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
                 active
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                  ? "bg-gold/10 text-gold border-l-2 border-gold pl-[10px]"
+                  : "text-cream/70 hover:bg-navy-500/50 hover:text-cream"
               }`}
             >
-              <Icon size={18} />
+              <Icon size={17} className={active ? "text-gold" : "text-cream/60"} />
               {label}
             </Link>
           );
@@ -69,15 +71,15 @@ export default function Sidebar() {
       </nav>
 
       {/* User + sign out */}
-      <div className="px-3 py-4 border-t border-gray-700">
+      <div className="px-3 py-4 border-t border-gold/15">
         {email && (
-          <p className="text-xs text-gray-500 px-3 mb-2 truncate">{email}</p>
+          <p className="text-xs text-gold/60 px-3 mb-2 truncate tracking-wide">{email}</p>
         )}
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white w-full transition-colors"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-cream/70 hover:bg-burgundy/30 hover:text-cream w-full transition-colors"
         >
-          <LogOut size={18} />
+          <LogOut size={17} />
           Sign out
         </button>
       </div>

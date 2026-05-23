@@ -11,20 +11,25 @@ export default async function ListingsPage() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return <p className="p-6 text-red-500">Failed to load listings: {error.message}</p>;
+    return (
+      <p className="p-8 text-burgundy">Failed to load listings: {error.message}</p>
+    );
   }
 
   return (
     <>
       <Header title="Listings" />
-      <main className="p-6 space-y-4">
+      <main className="p-8 space-y-5">
         <div className="flex justify-between items-center">
-          <p className="text-sm text-gray-500">{listings?.length ?? 0} total</p>
+          <p className="text-sm text-ink-mute">
+            <span className="font-serif text-navy text-base">{listings?.length ?? 0}</span> total
+          </p>
           <Link
             href="/listings/new"
-            className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
+            className="bg-navy hover:bg-navy-500 text-cream px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
           >
-            + New Listing
+            <span>+ New Listing</span>
+            <span className="text-gold">›</span>
           </Link>
         </div>
         <ListingsTable listings={listings ?? []} />

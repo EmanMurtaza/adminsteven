@@ -20,32 +20,47 @@ export default async function DashboardPage() {
   return (
     <>
       <Header title="Dashboard" />
-      <main className="p-6 space-y-6">
-        <div className="grid grid-cols-3 gap-4">
+      <main className="p-8 space-y-8">
+        {/* Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {stats.map(({ label, value }) => (
-            <div key={label} className="bg-white rounded-lg border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">{label}</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{value}</p>
+            <div
+              key={label}
+              className="bg-white border border-gold/25 rounded-xl p-6 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)] hover:shadow-[0_8px_30px_-12px_rgba(14,27,48,0.18)] transition-shadow"
+            >
+              <p className="text-xs uppercase tracking-[0.18em] text-ink-mute">{label}</p>
+              <p className="font-serif text-4xl font-semibold text-navy mt-3">{value}</p>
+              <div className="h-px w-8 bg-gold mt-4" />
             </div>
           ))}
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <h2 className="font-semibold text-gray-700 mb-3">Quick actions</h2>
-          <div className="flex gap-3">
+        {/* Quick actions */}
+        <div className="bg-white border border-gold/25 rounded-xl p-6">
+          <h2 className="font-serif text-xl text-navy mb-1">Quick Actions</h2>
+          <p className="text-sm text-ink-mute mb-5">Manage your properties and content.</p>
+          <div className="flex flex-wrap gap-3">
             <Link
               href="/listings/new"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
+              className="bg-navy hover:bg-navy-500 text-cream px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
             >
-              + New Listing
+              <span>+ New Listing</span>
+              <span className="text-gold">›</span>
             </Link>
             <Link
               href="/listings"
-              className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50"
+              className="border border-navy/30 text-navy hover:bg-navy hover:text-cream hover:border-navy px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
             >
               View All Listings
             </Link>
           </div>
+        </div>
+
+        {/* Tagline strip */}
+        <div className="text-center pt-4">
+          <p className="font-serif italic text-ink-mute text-sm">
+            “DFW Real Estate · Luxury, REO &amp; Investor — Since 2006”
+          </p>
         </div>
       </main>
     </>
