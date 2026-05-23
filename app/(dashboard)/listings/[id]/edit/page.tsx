@@ -21,7 +21,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ id
   return (
     <>
       <Header title={`Edit: ${listing.title}`} />
-      <main className="p-8">
+      <main className="p-4 sm:p-8">
         <ListingForm initialData={listing} onSubmit={updateListing} />
       </main>
     </>

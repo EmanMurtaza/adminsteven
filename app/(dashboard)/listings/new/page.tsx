@@ -14,7 +14,7 @@ export default function NewListingPage() {
   return (
     <>
       <Header title="New Listing" />
-      <main className="p-8">
+      <main className="p-4 sm:p-8">
         <ListingForm onSubmit={createListing} />
       </main>
     </>

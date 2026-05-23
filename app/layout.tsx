@@ -22,6 +22,12 @@ export const metadata: Metadata = {
   description: "Admin panel for Moning & Associates · DFW Real Estate.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#06101C",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

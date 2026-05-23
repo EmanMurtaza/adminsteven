@@ -50,7 +50,7 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-6 max-w-2xl bg-white border border-gold/25 rounded-xl p-7 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]"
+      className="space-y-5 sm:space-y-6 max-w-2xl bg-white border border-gold/25 rounded-xl p-5 sm:p-7 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]"
     >
       {error && (
         <div className="bg-burgundy/5 border border-burgundy/30 text-burgundy text-sm px-4 py-3 rounded-md">
@@ -81,7 +81,7 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
         <div>
           <label className={labelClass}>Price</label>
           <input
@@ -120,11 +120,11 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
         </select>
       </div>
 
-      <div className="flex gap-3 pt-2 border-t border-gold/15">
+      <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-gold/15">
         <button
           type="submit"
           disabled={loading}
-          className="bg-navy hover:bg-navy-500 text-cream px-6 py-2.5 rounded-md text-sm font-medium transition-colors disabled:opacity-60 inline-flex items-center gap-2"
+          className="bg-navy hover:bg-navy-500 text-cream px-6 py-2.5 rounded-md text-sm font-medium transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
         >
           <span>{loading ? "Saving…" : "Save Listing"}</span>
           {!loading && <span className="text-gold">›</span>}
