@@ -5,16 +5,30 @@ import Link from "next/link";
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const [{ count: total }, { count: published }, { count: drafts }] = await Promise.all([
+  const [
+    { count: totalListings },
+    { count: publishedListings },
+    { count: totalPosts },
+    { count: publishedPosts },
+  ] = await Promise.all([
     supabase.from("listings").select("*", { count: "exact", head: true }),
     supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "published"),
-    supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "draft"),
+    supabase.from("blog_posts").select("*", { count: "exact", head: true }),
+    supabase
+      .from("blog_posts")
+      .select("*", { count: "exact", head: true })
+      .not("published_at", "is", null)
+      .lte("published_at", new Date().toISOString()),
   ]);
 
+  const draftPosts = (totalPosts ?? 0) - (publishedPosts ?? 0);
+
   const stats = [
-    { label: "Total Listings", value: total ?? 0 },
-    { label: "Published", value: published ?? 0 },
-    { label: "Drafts", value: drafts ?? 0 },
+    { label: "Blog Posts", value: totalPosts ?? 0 },
+    { label: "Published Posts", value: publishedPosts ?? 0 },
+    { label: "Draft Posts", value: Math.max(0, draftPosts) },
+    { label: "Listings", value: totalListings ?? 0 },
+    { label: "Published Listings", value: publishedListings ?? 0 },
   ];
 
   return (
@@ -22,7 +36,7 @@ export default async function DashboardPage() {
       <Header title="Dashboard" />
       <main className="p-4 sm:p-8 space-y-6 sm:space-y-8">
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-5">
           {stats.map(({ label, value }) => (
             <div
               key={label}
@@ -49,17 +63,23 @@ export default async function DashboardPage() {
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/listings/new"
+              href="/blogs/new"
               className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
             >
-              <span>+ New Listing</span>
+              <span>+ New Post</span>
               <span className="text-gold">›</span>
             </Link>
             <Link
-              href="/listings"
+              href="/blogs"
               className="border border-navy/30 text-navy hover:bg-navy hover:text-cream hover:border-navy px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
             >
-              View All Listings
+              All Blog Posts
+            </Link>
+            <Link
+              href="/listings/new"
+              className="border border-navy/30 text-navy hover:bg-navy hover:text-cream hover:border-navy px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
+            >
+              + New Listing
             </Link>
           </div>
         </div>
