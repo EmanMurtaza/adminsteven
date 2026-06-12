@@ -32,11 +32,13 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // API routes handle their own auth (public GET, x-api-key for writes) —
+  // redirecting them to /login would break programmatic callers.
   const isPublic =
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth/callback") ||
-    (pathname.startsWith("/api/listings") && request.method === "GET") ||
-    (pathname.startsWith("/api/blog") && request.method === "GET");
+    pathname.startsWith("/api/listings") ||
+    pathname.startsWith("/api/blog");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
