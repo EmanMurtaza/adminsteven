@@ -1,14 +1,18 @@
 import Header from "@/components/layout/Header";
 import BlogForm from "@/components/blog/BlogForm";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { BlogPostInsert } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 
 export default function NewBlogPostPage() {
   async function createPost(data: BlogPostInsert) {
     "use server";
-    const supabase = await createClient();
-    const { error } = await supabase.from("blog_posts").insert(data);
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+    if (data.status === "published" && !data.published_at) {
+      data.published_at = new Date().toISOString();
+    }
+    const { error } = await supabase.from("blogs").insert(data);
     if (!error) revalidatePath("/blog");
     return { error: error?.message };
   }

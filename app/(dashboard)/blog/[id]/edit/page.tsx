@@ -1,8 +1,8 @@
 import Header from "@/components/layout/Header";
 import BlogForm from "@/components/blog/BlogForm";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { BlogPostInsert } from "@/lib/types";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 export default async function EditBlogPostPage({
@@ -11,9 +11,10 @@ export default async function EditBlogPostPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const supabase = await createAuthedServiceClient();
+  if (!supabase) redirect("/login");
   const { data: post } = await supabase
-    .from("blog_posts")
+    .from("blogs")
     .select("*")
     .eq("id", id)
     .single();
@@ -22,9 +23,13 @@ export default async function EditBlogPostPage({
 
   async function updatePost(data: BlogPostInsert) {
     "use server";
-    const supabase = await createClient();
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+    if (data.status === "published" && !post.published_at) {
+      data.published_at = new Date().toISOString();
+    }
     const { error } = await supabase
-      .from("blog_posts")
+      .from("blogs")
       .update(data)
       .eq("id", id);
     if (!error) revalidatePath("/blog");

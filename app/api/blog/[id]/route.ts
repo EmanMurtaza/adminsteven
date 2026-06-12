@@ -24,8 +24,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Try by UUID first, fall back to slug
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
   const query = isUuid
-    ? supabase.from("blog_posts").select("*").eq("id", id)
-    : supabase.from("blog_posts").select("*").eq("slug", id);
+    ? supabase.from("blogs").select("*").eq("id", id)
+    : supabase.from("blogs").select("*").eq("slug", id);
 
   const { data, error } = await query.single();
 
@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const body = await request.json();
   const supabase = await createServiceClient();
   const { data, error } = await supabase
-    .from("blog_posts")
+    .from("blogs")
     .update({ ...body, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
@@ -67,7 +67,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const { id } = await params;
   const supabase = await createServiceClient();
-  const { error } = await supabase.from("blog_posts").delete().eq("id", id);
+  const { error } = await supabase.from("blogs").delete().eq("id", id);
 
   if (error) {
     return cors(NextResponse.json({ error: error.message }, { status: 400 }));

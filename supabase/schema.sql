@@ -1,79 +1,44 @@
--- Already run on project: https://lktmlevsotbvnkkcrreg.supabase.co
--- Project: Moning Associates | East US (North Virginia)
-
-create extension if not exists "uuid-ossp";
-
-create table if not exists listings (
-  id          uuid primary key default uuid_generate_v4(),
-  title       text not null,
-  description text,
-  price       numeric(12, 2),
-  category    text,
-  status      text not null default 'draft' check (status in ('draft', 'published', 'archived')),
-  images      text[] not null default '{}',
-  meta        jsonb not null default '{}',
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
-
--- Auto-update updated_at on row change
-create or replace function set_updated_at()
-returns trigger language plpgsql as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
-create trigger listings_updated_at
-  before update on listings
-  for each row execute procedure set_updated_at();
-
--- Row Level Security
-alter table listings enable row level security;
-
--- Admin (service role) can do everything — no policy needed, service role bypasses RLS
--- Main website (anon key) can only read published listings
-create policy "Public can read published listings"
-  on listings for select
-  using (status = 'published');
-
--- ─── Blog Posts ───────────────────────────────────────────────────────────────
-
-create table if not exists blog_posts (
-  id          uuid primary key default uuid_generate_v4(),
-  title       text not null,
-  slug        text unique not null,
-  author      text,
-  excerpt     text,
-  content     text not null default '',
-  cover_image text,
-  tags        text[] not null default '{}',
-  status      text not null default 'draft' check (status in ('draft', 'published', 'archived')),
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
-
-create trigger blog_posts_updated_at
-  before update on blog_posts
-  for each row execute procedure set_updated_at();
-
-alter table blog_posts enable row level security;
-
-create policy "Public can read published posts"
-  on blog_posts for select
-  using (status = 'published');
-
--- ─── Storage: blog-images bucket ─────────────────────────────────────────────
--- Run in Supabase dashboard → Storage → New bucket: "blog-images", Public = true
--- Then run these policies:
+-- Supabase project: Moning Associates | East US (North Virginia)
+-- https://lktmlevsotbvnkkcrreg.supabase.co
 --
--- insert into storage.buckets (id, name, public) values ('blog-images', 'blog-images', true);
+-- NOTE: This file documents the LIVE schema shared with the main website
+-- (stevenmoning.vercel.app). The admin panel reads/writes `properties` and
+-- `blogs` — the same tables the main site renders. Do not create separate
+-- admin-only tables (an earlier `listings`/`blog_posts` pair caused the admin
+-- and the live site to drift apart).
 --
--- create policy "Authenticated can upload blog images"
---   on storage.objects for insert
---   with check (auth.role() = 'authenticated' and bucket_id = 'blog-images');
---
--- create policy "Public can view blog images"
---   on storage.objects for select
---   using (bucket_id = 'blog-images');
+-- RLS: both tables only allow the anon key to SELECT published rows.
+-- All admin reads and writes go through the service role
+-- (see lib/supabase/server.ts → createAuthedServiceClient).
+
+-- ─── properties ──────────────────────────────────────────────────────────────
+-- property_type check: 'luxury' | 'land' | 'off_market'
+-- status check:        'draft' | 'published' | 'archived'
+-- Notable defaults: state='TX', is_featured=false, pool=false,
+--                   garage_spaces=0, stories=1, images='{}', meta='{}'
+-- Columns:
+--   id uuid PK, title text NOT NULL, slug text, description text,
+--   property_type text NOT NULL, status text NOT NULL, is_featured bool,
+--   address, city, state, zip_code, neighborhood, county text,
+--   price, price_per_sqft, hoa_fee, tax_annual numeric,
+--   bedrooms int, bathrooms numeric, half_bathrooms int,
+--   square_footage int, lot_size_sqft int, lot_size_acres numeric,
+--   year_built int, garage_spaces int, stories int, pool bool,
+--   images text[], virtual_tour_url text, video_url text, mls_number text,
+--   listing_date date, days_on_market int, meta jsonb,
+--   created_at timestamptz, updated_at timestamptz
+
+-- ─── blogs ───────────────────────────────────────────────────────────────────
+-- status check: 'draft' | 'published' | 'archived'
+-- Default author: 'Steven Moning'
+-- Columns:
+--   id uuid PK, title text NOT NULL, slug text UNIQUE NOT NULL,
+--   excerpt text, content text, cover_image text, author text,
+--   tags text[], status text, published_at timestamptz, meta jsonb,
+--   created_at timestamptz, updated_at timestamptz
+
+-- ─── Other tables used only by the main website ──────────────────────────────
+--   contact_submissions, services, team_members
+
+-- ─── Storage: blog-images bucket (public) ────────────────────────────────────
+-- Authenticated users can upload; public can view.

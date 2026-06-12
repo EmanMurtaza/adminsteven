@@ -1,13 +1,16 @@
 import Header from "@/components/layout/Header";
 import BlogTable from "@/components/blog/BlogTable";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export default async function BlogPage() {
-  const supabase = await createClient();
+  // Drafts are hidden from the anon key by RLS — admin reads need service role
+  const supabase = await createAuthedServiceClient();
+  if (!supabase) redirect("/login");
   const { data: posts, error } = await supabase
-    .from("blog_posts")
+    .from("blogs")
     .select("*")
     .order("created_at", { ascending: false });
 
@@ -21,8 +24,9 @@ export default async function BlogPage() {
 
   async function deletePost(id: string) {
     "use server";
-    const supabase = await createClient();
-    const { error } = await supabase.from("blog_posts").delete().eq("id", id);
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+    const { error } = await supabase.from("blogs").delete().eq("id", id);
     revalidatePath("/blog");
     return { error: error?.message };
   }

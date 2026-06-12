@@ -1,9 +1,12 @@
 import Header from "@/components/layout/Header";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
+  // Drafts are hidden from the anon key by RLS — admin reads need service role
+  const supabase = await createAuthedServiceClient();
+  if (!supabase) redirect("/login");
 
   const [
     { count: total },
@@ -12,11 +15,11 @@ export default async function DashboardPage() {
     { count: totalPosts },
     { count: publishedPosts },
   ] = await Promise.all([
-    supabase.from("listings").select("*", { count: "exact", head: true }),
-    supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "published"),
-    supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "draft"),
-    supabase.from("blog_posts").select("*", { count: "exact", head: true }),
-    supabase.from("blog_posts").select("*", { count: "exact", head: true }).eq("status", "published"),
+    supabase.from("properties").select("*", { count: "exact", head: true }),
+    supabase.from("properties").select("*", { count: "exact", head: true }).eq("status", "published"),
+    supabase.from("properties").select("*", { count: "exact", head: true }).eq("status", "draft"),
+    supabase.from("blogs").select("*", { count: "exact", head: true }),
+    supabase.from("blogs").select("*", { count: "exact", head: true }).eq("status", "published"),
   ]);
 
   const stats = [

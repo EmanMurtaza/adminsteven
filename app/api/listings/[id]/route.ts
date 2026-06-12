@@ -20,7 +20,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
   const supabase = await createServiceClient();
-  const { data, error } = await supabase.from("listings").select("*").eq("id", id).single();
+  const { data, error } = await supabase.from("properties").select("*").eq("id", id).single();
 
   if (error || !data) {
     return cors(NextResponse.json({ error: "Not found" }, { status: 404 }));
@@ -39,7 +39,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const body = await request.json();
   const supabase = await createServiceClient();
   const { data, error } = await supabase
-    .from("listings")
+    .from("properties")
     .update({ ...body, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
@@ -60,7 +60,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const { id } = await params;
   const supabase = await createServiceClient();
-  const { error } = await supabase.from("listings").delete().eq("id", id);
+  const { error } = await supabase.from("properties").delete().eq("id", id);
 
   if (error) {
     return cors(NextResponse.json({ error: error.message }, { status: 400 }));

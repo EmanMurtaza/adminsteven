@@ -17,20 +17,23 @@ export async function OPTIONS() {
 // GET /api/listings — called by the main website to fetch published listings
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const category = searchParams.get("category");
+  // `type` preferred; `category` kept as an alias for older callers
+  const propertyType = searchParams.get("type") ?? searchParams.get("category");
+  const featured = searchParams.get("featured");
   const status = searchParams.get("status") ?? "published";
   const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
   const offset = Number(searchParams.get("offset") ?? 0);
 
   const supabase = await createServiceClient();
   let query = supabase
-    .from("listings")
+    .from("properties")
     .select("*")
     .eq("status", status)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (category) query = query.eq("category", category);
+  if (propertyType) query = query.eq("property_type", propertyType);
+  if (featured === "true") query = query.eq("is_featured", true);
 
   const { data, error, count } = await query;
 
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const supabase = await createServiceClient();
-  const { data, error } = await supabase.from("listings").insert(body).select().single();
+  const { data, error } = await supabase.from("properties").insert(body).select().single();
 
   if (error) {
     return cors(NextResponse.json({ error: error.message }, { status: 400 }));

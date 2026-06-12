@@ -24,10 +24,10 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createServiceClient();
   let query = supabase
-    .from("blog_posts")
-    .select("id, title, slug, author, excerpt, cover_image, tags, status, created_at, updated_at")
+    .from("blogs")
+    .select("id, title, slug, author, excerpt, cover_image, tags, status, published_at, created_at, updated_at")
     .eq("status", status)
-    .order("created_at", { ascending: false })
+    .order("published_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
 
   if (tag) query = query.contains("tags", [tag]);
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const supabase = await createServiceClient();
-  const { data, error } = await supabase.from("blog_posts").insert(body).select().single();
+  const { data, error } = await supabase.from("blogs").insert(body).select().single();
 
   if (error) {
     return cors(NextResponse.json({ error: error.message }, { status: 400 }));

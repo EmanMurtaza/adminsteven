@@ -1,6 +1,6 @@
 import Header from "@/components/layout/Header";
-import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Pencil } from "lucide-react";
 
@@ -16,9 +16,10 @@ export default async function ViewBlogPostPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const supabase = await createAuthedServiceClient();
+  if (!supabase) redirect("/login");
   const { data: post } = await supabase
-    .from("blog_posts")
+    .from("blogs")
     .select("*")
     .eq("id", id)
     .single();

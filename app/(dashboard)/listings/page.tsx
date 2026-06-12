@@ -1,13 +1,16 @@
 import Header from "@/components/layout/Header";
 import ListingsTable from "@/components/listings/ListingsTable";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export default async function ListingsPage() {
-  const supabase = await createClient();
+  // Drafts are hidden from the anon key by RLS — admin reads need service role
+  const supabase = await createAuthedServiceClient();
+  if (!supabase) redirect("/login");
   const { data: listings, error } = await supabase
-    .from("listings")
+    .from("properties")
     .select("*")
     .order("created_at", { ascending: false });
 
@@ -21,8 +24,9 @@ export default async function ListingsPage() {
 
   async function deleteListing(id: string) {
     "use server";
-    const supabase = await createClient();
-    const { error } = await supabase.from("listings").delete().eq("id", id);
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+    const { error } = await supabase.from("properties").delete().eq("id", id);
     revalidatePath("/listings");
     revalidatePath("/dashboard");
     return { error: error?.message };
