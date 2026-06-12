@@ -14,23 +14,23 @@ export async function OPTIONS() {
   return cors(new NextResponse(null, { status: 204 }));
 }
 
-// GET /api/listings — called by the main website to fetch published listings
+// GET /api/blog — fetch published blog posts for the main website
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const category = searchParams.get("category");
   const status = searchParams.get("status") ?? "published";
-  const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
+  const limit = Math.min(Number(searchParams.get("limit") ?? 20), 100);
   const offset = Number(searchParams.get("offset") ?? 0);
+  const tag = searchParams.get("tag");
 
   const supabase = await createServiceClient();
   let query = supabase
-    .from("listings")
-    .select("*")
+    .from("blog_posts")
+    .select("id, title, slug, author, excerpt, cover_image, tags, status, created_at, updated_at")
     .eq("status", status)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (category) query = query.eq("category", category);
+  if (tag) query = query.contains("tags", [tag]);
 
   const { data, error, count } = await query;
 
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   return cors(NextResponse.json({ data, count }));
 }
 
-// POST /api/listings — create a listing (internal admin use, protected by API key)
+// POST /api/blog — create a post (admin only)
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const supabase = await createServiceClient();
-  const { data, error } = await supabase.from("listings").insert(body).select().single();
+  const { data, error } = await supabase.from("blog_posts").insert(body).select().single();
 
   if (error) {
     return cors(NextResponse.json({ error: error.message }, { status: 400 }));

@@ -8,6 +8,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
+import { canSplit } from "@tiptap/pm/transform";
 import { useCallback, useRef, useState } from "react";
 import {
   Bold,
@@ -65,6 +66,61 @@ export default function RichTextEditor({
     content,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
   });
+
+  // ── Word-like block formatting: if only part of a paragraph is selected,
+  //    split that chunk into its own block and convert just the chunk.
+  //    Otherwise (no selection / whole block / multi-block), convert as usual.
+  const applyBlockType = useCallback(
+    (level: 1 | 2 | 3 | null) => {
+      if (!editor) return;
+      const { state } = editor;
+      const { from, to, empty } = state.selection;
+      const $from = state.doc.resolve(from);
+      const $to = state.doc.resolve(to);
+
+      const sameBlock = $from.sameParent($to) && $from.parent.isTextblock;
+      const blockStart = $from.start();
+      const blockEnd = $from.end();
+      const isPartial =
+        !empty && sameBlock && (from > blockStart || to < blockEnd);
+
+      if (!isPartial) {
+        if (level) {
+          editor.chain().focus().toggleHeading({ level }).run();
+        } else {
+          editor.chain().focus().setParagraph().run();
+        }
+        return;
+      }
+
+      editor
+        .chain()
+        .focus()
+        .command(({ tr, dispatch }) => {
+          // Split after the selection first so earlier positions stay valid,
+          // then split before it — the selected text becomes its own block.
+          if (to < blockEnd) {
+            if (!canSplit(tr.doc, to)) return false;
+            tr.split(to);
+          }
+          if (from > blockStart) {
+            const mappedFrom = tr.mapping.map(from, -1);
+            if (!canSplit(tr.doc, mappedFrom)) return false;
+            tr.split(mappedFrom);
+          }
+          const start = tr.mapping.map(from, 1);
+          const end = tr.mapping.map(to, -1);
+          const type = level
+            ? state.schema.nodes.heading
+            : state.schema.nodes.paragraph;
+          tr.setBlockType(start, end, type, level ? { level } : null);
+          if (dispatch) dispatch(tr);
+          return true;
+        })
+        .run();
+    },
+    [editor]
+  );
 
   const insertImageFromUrl = useCallback(() => {
     if (!imageUrl.trim() || !editor) return;
@@ -160,7 +216,7 @@ export default function RichTextEditor({
           {blockLabel}
         </span>
         <Btn
-          action={() => editor.chain().focus().setParagraph().run()}
+          action={() => applyBlockType(null)}
           active={
             !editor.isActive("heading") &&
             !editor.isActive("bulletList") &&
@@ -171,21 +227,21 @@ export default function RichTextEditor({
           <span className="text-[11px] font-medium leading-none">¶</span>
         </Btn>
         <Btn
-          action={() => editor.chain().focus().setHeading({ level: 1 }).run()}
+          action={() => applyBlockType(1)}
           active={editor.isActive("heading", { level: 1 })}
           title="Heading 1 (large)"
         >
           <span className="text-[11px] font-bold leading-none">H1</span>
         </Btn>
         <Btn
-          action={() => editor.chain().focus().setHeading({ level: 2 }).run()}
+          action={() => applyBlockType(2)}
           active={editor.isActive("heading", { level: 2 })}
           title="Heading 2 (medium)"
         >
           <span className="text-[11px] font-bold leading-none">H2</span>
         </Btn>
         <Btn
-          action={() => editor.chain().focus().setHeading({ level: 3 }).run()}
+          action={() => applyBlockType(3)}
           active={editor.isActive("heading", { level: 3 })}
           title="Heading 3 (small)"
         >

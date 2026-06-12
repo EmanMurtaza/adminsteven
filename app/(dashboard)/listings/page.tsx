@@ -2,6 +2,7 @@ import Header from "@/components/layout/Header";
 import ListingsTable from "@/components/listings/ListingsTable";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 
 export default async function ListingsPage() {
   const supabase = await createClient();
@@ -16,6 +17,15 @@ export default async function ListingsPage() {
         Failed to load listings: {error.message}
       </p>
     );
+  }
+
+  async function deleteListing(id: string) {
+    "use server";
+    const supabase = await createClient();
+    const { error } = await supabase.from("listings").delete().eq("id", id);
+    revalidatePath("/listings");
+    revalidatePath("/dashboard");
+    return { error: error?.message };
   }
 
   return (
@@ -37,7 +47,7 @@ export default async function ListingsPage() {
             <span className="text-gold">›</span>
           </Link>
         </div>
-        <ListingsTable listings={listings ?? []} />
+        <ListingsTable listings={listings ?? []} onDelete={deleteListing} />
       </main>
     </>
   );

@@ -16,11 +16,18 @@ export async function OPTIONS() {
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/listings/:id
+// GET /api/blog/:id — fetch by UUID or slug
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
   const supabase = await createServiceClient();
-  const { data, error } = await supabase.from("listings").select("*").eq("id", id).single();
+
+  // Try by UUID first, fall back to slug
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  const query = isUuid
+    ? supabase.from("blog_posts").select("*").eq("id", id)
+    : supabase.from("blog_posts").select("*").eq("slug", id);
+
+  const { data, error } = await query.single();
 
   if (error || !data) {
     return cors(NextResponse.json({ error: "Not found" }, { status: 404 }));
@@ -29,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return cors(NextResponse.json({ data }));
 }
 
-// PUT /api/listings/:id
+// PUT /api/blog/:id
 export async function PUT(request: NextRequest, { params }: Params) {
   if (!isAuthorized(request)) {
     return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
@@ -39,7 +46,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const body = await request.json();
   const supabase = await createServiceClient();
   const { data, error } = await supabase
-    .from("listings")
+    .from("blog_posts")
     .update({ ...body, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
@@ -52,7 +59,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   return cors(NextResponse.json({ data }));
 }
 
-// DELETE /api/listings/:id
+// DELETE /api/blog/:id
 export async function DELETE(request: NextRequest, { params }: Params) {
   if (!isAuthorized(request)) {
     return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
@@ -60,7 +67,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const { id } = await params;
   const supabase = await createServiceClient();
-  const { error } = await supabase.from("listings").delete().eq("id", id);
+  const { error } = await supabase.from("blog_posts").delete().eq("id", id);
 
   if (error) {
     return cors(NextResponse.json({ error: error.message }, { status: 400 }));

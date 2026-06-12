@@ -35,7 +35,8 @@ export async function proxy(request: NextRequest) {
   const isPublic =
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth/callback") ||
-    (pathname.startsWith("/api/listings") && request.method === "GET");
+    (pathname.startsWith("/api/listings") && request.method === "GET") ||
+    (pathname.startsWith("/api/blog") && request.method === "GET");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

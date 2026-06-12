@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { Listing } from "@/lib/types";
 import { Pencil, Trash2, Eye } from "lucide-react";
+import { useState } from "react";
 
 interface ListingsTableProps {
   listings: Listing[];
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<{ error?: string }>;
 }
 
 const statusStyles: Record<string, string> = {
@@ -16,6 +17,16 @@ const statusStyles: Record<string, string> = {
 };
 
 export default function ListingsTable({ listings, onDelete }: ListingsTableProps) {
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function handleDelete(id: string, title: string) {
+    if (!onDelete) return;
+    if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    setDeleting(id);
+    await onDelete(id);
+    setDeleting(null);
+  }
+
   if (listings.length === 0) {
     return (
       <div className="text-center py-16 sm:py-20 px-4 bg-white border border-gold/25 rounded-xl">
@@ -89,8 +100,9 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                 </Link>
                 {onDelete && (
                   <button
-                    onClick={() => onDelete(listing.id)}
-                    className="p-2 rounded text-ink-mute hover:text-burgundy hover:bg-burgundy/10 transition-colors"
+                    onClick={() => handleDelete(listing.id, listing.title)}
+                    disabled={deleting === listing.id}
+                    className="p-2 rounded text-ink-mute hover:text-burgundy hover:bg-burgundy/10 transition-colors disabled:opacity-40"
                     aria-label="Delete"
                   >
                     <Trash2 size={16} />
