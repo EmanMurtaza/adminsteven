@@ -1,12 +1,13 @@
 import Header from "@/components/layout/Header";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: listing } = await supabase.from("listings").select("*").eq("id", id).single();
+  const supabase = await createAuthedServiceClient();
+  if (!supabase) redirect("/login");
+  const { data: listing } = await supabase.from("properties").select("*").eq("id", id).single();
 
   if (!listing) notFound();
 
@@ -16,12 +17,36 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
       <main className="p-4 sm:p-8 max-w-3xl space-y-5 sm:space-y-6">
         <div className="bg-white border border-gold/25 rounded-xl p-5 sm:p-7 space-y-4 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]">
           <Row label="Title" value={listing.title} />
-          <Row label="Category" value={listing.category ?? "—"} />
+          <Row label="Type" value={listing.property_type?.replace("_", "-") ?? "—"} />
+          <Row label="Status" value={listing.status} highlight />
           <Row
             label="Price"
-            value={listing.price != null ? `$${listing.price.toLocaleString()}` : "—"}
+            value={listing.price != null ? `$${Number(listing.price).toLocaleString()}` : "—"}
           />
-          <Row label="Status" value={listing.status} highlight />
+          <Row
+            label="Address"
+            value={
+              [listing.address, listing.city, listing.state, listing.zip_code]
+                .filter(Boolean)
+                .join(", ") || "—"
+            }
+          />
+          <Row label="Neighborhood" value={listing.neighborhood ?? "—"} />
+          <Row
+            label="Beds / Baths"
+            value={
+              listing.bedrooms != null || listing.bathrooms != null
+                ? `${listing.bedrooms ?? "—"} bd / ${listing.bathrooms ?? "—"} ba`
+                : "—"
+            }
+          />
+          <Row
+            label="Square Feet"
+            value={listing.square_footage != null ? listing.square_footage.toLocaleString() : "—"}
+          />
+          <Row label="Year Built" value={listing.year_built != null ? String(listing.year_built) : "—"} />
+          <Row label="MLS #" value={listing.mls_number ?? "—"} />
+          <Row label="Featured" value={listing.is_featured ? "Yes" : "No"} />
           <Row label="Description" value={listing.description ?? "—"} />
           <Row label="Created" value={new Date(listing.created_at).toLocaleString()} />
         </div>

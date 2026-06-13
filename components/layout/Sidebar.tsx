@@ -6,20 +6,22 @@ import {
   LayoutDashboard,
   List,
   PlusCircle,
-  FileText,
   Settings,
   LogOut,
   Menu,
   X,
+  BookOpen,
+  FilePlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 
 const nav = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Blog Posts", href: "/blogs", icon: FileText },
-  { label: "New Post", href: "/blogs/new", icon: PlusCircle },
   { label: "Listings", href: "/listings", icon: List },
+  { label: "New Listing", href: "/listings/new", icon: PlusCircle },
+  { label: "Blog", href: "/blog", icon: BookOpen },
+  { label: "New Post", href: "/blog/new", icon: FilePlus },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

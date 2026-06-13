@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Listing } from "@/lib/types";
+import { Listing, PROPERTY_TYPES } from "@/lib/types";
 import { Pencil, Trash2, Eye } from "lucide-react";
+import { useState } from "react";
 
 interface ListingsTableProps {
   listings: Listing[];
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<{ error?: string }>;
 }
 
 const statusStyles: Record<string, string> = {
@@ -15,7 +16,20 @@ const statusStyles: Record<string, string> = {
   archived: "bg-navy/10 text-navy-500 border border-navy/20",
 };
 
+const typeLabel = (value: string) =>
+  PROPERTY_TYPES.find((t) => t.value === value)?.label ?? value;
+
 export default function ListingsTable({ listings, onDelete }: ListingsTableProps) {
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function handleDelete(id: string, title: string) {
+    if (!onDelete) return;
+    if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    setDeleting(id);
+    await onDelete(id);
+    setDeleting(null);
+  }
+
   if (listings.length === 0) {
     return (
       <div className="text-center py-16 sm:py-20 px-4 bg-white border border-gold/25 rounded-xl">
@@ -50,9 +64,10 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                 <p className="font-serif text-lg text-navy leading-tight truncate">
                   {listing.title}
                 </p>
-                {listing.category && (
-                  <p className="text-xs text-ink-mute mt-1">{listing.category}</p>
-                )}
+                <p className="text-xs text-ink-mute mt-1">
+                  {typeLabel(listing.property_type)}
+                  {listing.city ? ` · ${listing.city}` : ""}
+                </p>
               </div>
               <span
                 className={`px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider shrink-0 ${statusStyles[listing.status]}`}
@@ -89,8 +104,9 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                 </Link>
                 {onDelete && (
                   <button
-                    onClick={() => onDelete(listing.id)}
-                    className="p-2 rounded text-ink-mute hover:text-burgundy hover:bg-burgundy/10 transition-colors"
+                    onClick={() => handleDelete(listing.id, listing.title)}
+                    disabled={deleting === listing.id}
+                    className="p-2 rounded text-ink-mute hover:text-burgundy hover:bg-burgundy/10 transition-colors disabled:opacity-40"
                     aria-label="Delete"
                   >
                     <Trash2 size={16} />
@@ -108,7 +124,8 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
           <thead className="bg-cream-100 text-ink-soft uppercase text-[10px] tracking-[0.18em]">
             <tr>
               <th className="px-5 py-4 text-left font-semibold">Title</th>
-              <th className="px-5 py-4 text-left font-semibold">Category</th>
+              <th className="px-5 py-4 text-left font-semibold">Type</th>
+              <th className="px-5 py-4 text-left font-semibold">City</th>
               <th className="px-5 py-4 text-left font-semibold">Price</th>
               <th className="px-5 py-4 text-left font-semibold">Status</th>
               <th className="px-5 py-4 text-left font-semibold">Created</th>
@@ -122,7 +139,8 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                 className="hover:bg-cream-100/50 transition-colors"
               >
                 <td className="px-5 py-4 font-medium text-navy">{listing.title}</td>
-                <td className="px-5 py-4 text-ink-soft">{listing.category ?? "—"}</td>
+                <td className="px-5 py-4 text-ink-soft">{typeLabel(listing.property_type)}</td>
+                <td className="px-5 py-4 text-ink-soft">{listing.city ?? "—"}</td>
                 <td className="px-5 py-4 text-ink-soft font-medium">
                   {listing.price != null
                     ? `$${listing.price.toLocaleString()}`

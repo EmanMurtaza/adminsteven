@@ -1,34 +1,33 @@
 import Header from "@/components/layout/Header";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthedServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
+  // Drafts are hidden from the anon key by RLS — admin reads need service role
+  const supabase = await createAuthedServiceClient();
+  if (!supabase) redirect("/login");
 
   const [
-    { count: totalListings },
-    { count: publishedListings },
+    { count: total },
+    { count: published },
+    { count: drafts },
     { count: totalPosts },
     { count: publishedPosts },
   ] = await Promise.all([
-    supabase.from("listings").select("*", { count: "exact", head: true }),
-    supabase.from("listings").select("*", { count: "exact", head: true }).eq("status", "published"),
-    supabase.from("blog_posts").select("*", { count: "exact", head: true }),
-    supabase
-      .from("blog_posts")
-      .select("*", { count: "exact", head: true })
-      .not("published_at", "is", null)
-      .lte("published_at", new Date().toISOString()),
+    supabase.from("properties").select("*", { count: "exact", head: true }),
+    supabase.from("properties").select("*", { count: "exact", head: true }).eq("status", "published"),
+    supabase.from("properties").select("*", { count: "exact", head: true }).eq("status", "draft"),
+    supabase.from("blogs").select("*", { count: "exact", head: true }),
+    supabase.from("blogs").select("*", { count: "exact", head: true }).eq("status", "published"),
   ]);
 
-  const draftPosts = (totalPosts ?? 0) - (publishedPosts ?? 0);
-
   const stats = [
+    { label: "Total Listings", value: total ?? 0 },
+    { label: "Published Listings", value: published ?? 0 },
+    { label: "Draft Listings", value: drafts ?? 0 },
     { label: "Blog Posts", value: totalPosts ?? 0 },
     { label: "Published Posts", value: publishedPosts ?? 0 },
-    { label: "Draft Posts", value: Math.max(0, draftPosts) },
-    { label: "Listings", value: totalListings ?? 0 },
-    { label: "Published Listings", value: publishedListings ?? 0 },
   ];
 
   return (
@@ -63,23 +62,30 @@ export default async function DashboardPage() {
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/blogs/new"
+              href="/listings/new"
+              className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
+            >
+              <span>+ New Listing</span>
+              <span className="text-gold">›</span>
+            </Link>
+            <Link
+              href="/blog/new"
               className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
             >
               <span>+ New Post</span>
               <span className="text-gold">›</span>
             </Link>
             <Link
-              href="/blogs"
+              href="/listings"
               className="border border-navy/30 text-navy hover:bg-navy hover:text-cream hover:border-navy px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
             >
-              All Blog Posts
+              All Listings
             </Link>
             <Link
-              href="/listings/new"
+              href="/blog"
               className="border border-navy/30 text-navy hover:bg-navy hover:text-cream hover:border-navy px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
             >
-              + New Listing
+              All Posts
             </Link>
           </div>
         </div>
