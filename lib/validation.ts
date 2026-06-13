@@ -1,4 +1,4 @@
-import { BLOG_CATEGORIES, type BlogCategory, type BlogPostInsert } from "./types";
+import { BLOG_CATEGORIES, type BlogCategory, type BlogRecordInsert } from "./types";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_TITLE = 200;
@@ -28,7 +28,7 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-export interface ValidatedBlog extends BlogPostInsert {
+export interface ValidatedBlog extends BlogRecordInsert {
   cat: BlogCategory;
 }
 
@@ -36,10 +36,7 @@ export type ValidationResult =
   | { ok: true; data: ValidatedBlog }
   | { ok: false; error: string };
 
-// Validate + normalize a blog form payload before it reaches Supabase.
-// We trust Supabase's parameterized queries to prevent SQL injection, but
-// still enforce app-level limits so a runaway client can't store junk.
-export function validateBlogInput(raw: Partial<BlogPostInsert>): ValidationResult {
+export function validateBlogInput(raw: Partial<BlogRecordInsert>): ValidationResult {
   const title = (raw.title ?? "").trim();
   if (!title) return { ok: false, error: "Title is required." };
   if (title.length > MAX_TITLE) return { ok: false, error: `Title must be ${MAX_TITLE} chars or fewer.` };

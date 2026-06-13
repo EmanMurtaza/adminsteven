@@ -2,7 +2,7 @@ import Header from "@/components/layout/Header";
 import BlogForm from "@/components/blogs/BlogForm";
 import { createClient } from "@/lib/supabase/server";
 import { validateBlogInput } from "@/lib/validation";
-import type { BlogPostInsert } from "@/lib/types";
+import type { BlogRecordInsert } from "@/lib/types";
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -24,7 +24,7 @@ export default async function EditBlogPage({
 
   if (!post) notFound();
 
-  async function updateBlog(data: BlogPostInsert): Promise<{ error?: string }> {
+  async function updateBlog(data: BlogRecordInsert): Promise<{ error?: string }> {
     "use server";
     const validated = validateBlogInput(data);
     if (!validated.ok) return { error: validated.error };

@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   BLOG_CATEGORIES,
   type BlogCategory,
-  type BlogPost,
-  type BlogPostInsert,
+  type BlogRecord,
+  type BlogRecordInsert,
 } from "@/lib/types";
 import { slugify, validateBlogInput } from "@/lib/validation";
 
 interface BlogFormProps {
-  initialData?: Partial<BlogPost>;
-  onSubmit: (data: BlogPostInsert) => Promise<{ error?: string }>;
+  initialData?: Partial<BlogRecord>;
+  onSubmit: (data: BlogRecordInsert) => Promise<{ error?: string }>;
 }
 
 const inputClass =
@@ -79,7 +79,7 @@ export default function BlogForm({ initialData, onSubmit }: BlogFormProps) {
         : new Date().toISOString();
     }
 
-    const payload: Partial<BlogPostInsert> = {
+    const payload: Partial<BlogRecordInsert> = {
       title: form.title,
       slug: form.slug,
       excerpt: form.excerpt,

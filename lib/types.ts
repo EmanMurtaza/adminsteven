@@ -100,9 +100,6 @@ export interface ListingInsert {
 
 export type ListingUpdate = Partial<ListingInsert>;
 
-// ── Blog posts ────────────────────────────────────────────────────────────────
-// Mirrors public.blog_posts in Supabase — schema kept in sync with the main site.
-
 export const BLOG_CATEGORIES = [
   "Alumni",
   "Baby Boomers",
@@ -119,7 +116,8 @@ export const BLOG_CATEGORIES = [
 
 export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
 
-export interface BlogPost {
+// Original blog_posts table (read by the main site / stevenmoning.vercel.app)
+export interface BlogRecord {
   id: number;
   slug: string;
   title: string;
@@ -132,5 +130,6 @@ export interface BlogPost {
   created_at: string;
 }
 
-export type BlogPostInsert = Omit<BlogPost, "id" | "created_at">;
-export type BlogPostUpdate = Partial<BlogPostInsert>;
+export type BlogRecordInsert = Omit<BlogRecord, "id" | "created_at">;
+export type BlogRecordUpdate = Partial<BlogRecordInsert>;
+

@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Eye } from "lucide-react";
-import type { BlogPost } from "@/lib/types";
+import type { BlogRecord } from "@/lib/types";
 
 interface BlogsTableProps {
-  posts: BlogPost[];
+  posts: BlogRecord[];
   deleteAction: (id: number) => Promise<{ error?: string }>;
 }
 
-function statusOf(post: BlogPost): "published" | "draft" {
+function statusOf(post: BlogRecord): "published" | "draft" {
   if (!post.published_at) return "draft";
   return new Date(post.published_at).getTime() <= Date.now() ? "published" : "draft";
 }

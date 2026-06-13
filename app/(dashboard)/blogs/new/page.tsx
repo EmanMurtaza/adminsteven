@@ -2,11 +2,11 @@ import Header from "@/components/layout/Header";
 import BlogForm from "@/components/blogs/BlogForm";
 import { createClient } from "@/lib/supabase/server";
 import { validateBlogInput } from "@/lib/validation";
-import type { BlogPostInsert } from "@/lib/types";
+import type { BlogRecordInsert } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 
 export default function NewBlogPage() {
-  async function createBlog(data: BlogPostInsert): Promise<{ error?: string }> {
+  async function createBlog(data: BlogRecordInsert): Promise<{ error?: string }> {
     "use server";
     // Re-validate on the server — never trust the client.
     const validated = validateBlogInput(data);
