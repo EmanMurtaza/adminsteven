@@ -1,0 +1,211 @@
+import { Collection, Filter, ObjectId } from "mongodb";
+import { getDb } from "./mongodb";
+import { redis } from "./redis";
+import { Listing, ListingInsert, ListingUpdate, ListingStatus, PropertyType } from "./types";
+
+type ListingDoc = Omit<Listing, "id" | "created_at" | "updated_at"> & {
+  _id: ObjectId;
+  created_at: Date;
+  updated_at: Date;
+};
+
+async function collection(): Promise<Collection<ListingDoc>> {
+  const db = await getDb();
+  return db.collection<ListingDoc>("listings");
+}
+
+// ── Redis cache layer ─────────────────────────────────────────────────────────
+// Cache-aside for the listings read path (behind the public GET /api/listings)
+// with version-based invalidation: every cached list key embeds a version
+// counter, and any write INCRs that counter so all previously-cached lists
+// become unreachable at once (no key scanning needed). All cache ops are
+// best-effort — a Redis failure must never break a Mongo read or block a write.
+const CACHE_TTL = 300; // seconds
+const VER_KEY = "listings:ver";
+const SNAP_KEY = "listings:snapshots";
+const SNAP_KEEP = 20; // rolling pre-write snapshots kept as an M0 backup substitute
+
+type ListResult = { data: Listing[]; count: number };
+
+function queryKey(q: ListingQuery): string {
+  return JSON.stringify({
+    status: q.status ?? null,
+    propertyType: q.propertyType ?? null,
+    featured: q.featured ?? false,
+    limit: q.limit ?? null,
+    offset: q.offset ?? null,
+  });
+}
+
+async function cacheVersion(): Promise<string> {
+  if (!redis) return "0";
+  try {
+    return (await redis.get<string | number>(VER_KEY))?.toString() ?? "0";
+  } catch {
+    return "0";
+  }
+}
+
+// Stash a snapshot of the full collection BEFORE a mutation, so a bad
+// write/delete can be recovered (M0 has no point-in-time restore).
+async function snapshotBeforeWrite(col: Collection<ListingDoc>): Promise<void> {
+  if (!redis) return;
+  try {
+    const all = await col.find({}).sort({ created_at: -1 }).toArray();
+    await redis.lpush(SNAP_KEY, { at: new Date().toISOString(), listings: all.map(toListing) });
+    await redis.ltrim(SNAP_KEY, 0, SNAP_KEEP - 1);
+  } catch {
+    /* snapshotting is a nice-to-have; never let it block the actual write */
+  }
+}
+
+// Bump the version AFTER a write so every previously-cached list is invalidated
+// and subsequent reads repopulate from Mongo.
+async function invalidate(): Promise<void> {
+  if (!redis) return;
+  try {
+    await redis.incr(VER_KEY);
+  } catch {
+    /* best-effort; a stale key still expires via TTL */
+  }
+}
+
+function toListing(doc: ListingDoc): Listing {
+  const { _id, created_at, updated_at, ...rest } = doc;
+  return {
+    ...rest,
+    id: _id.toString(),
+    created_at: created_at.toISOString(),
+    updated_at: updated_at.toISOString(),
+  };
+}
+
+// Fields the `properties` Postgres table used to default for us — replicated
+// here since Mongo has no column defaults.
+function withDefaults(data: ListingInsert) {
+  return {
+    slug: null,
+    description: null,
+    is_featured: false,
+    address: null,
+    city: null,
+    state: "TX",
+    zip_code: null,
+    neighborhood: null,
+    county: null,
+    price: null,
+    price_per_sqft: null,
+    hoa_fee: null,
+    tax_annual: null,
+    bedrooms: null,
+    bathrooms: null,
+    half_bathrooms: null,
+    square_footage: null,
+    lot_size_sqft: null,
+    lot_size_acres: null,
+    year_built: null,
+    garage_spaces: 0,
+    stories: 1,
+    pool: false,
+    images: [] as string[],
+    virtual_tour_url: null,
+    video_url: null,
+    mls_number: null,
+    listing_date: null,
+    days_on_market: null,
+    meta: {} as Record<string, unknown>,
+    ...data,
+  };
+}
+
+export interface ListingQuery {
+  propertyType?: string | null;
+  featured?: boolean;
+  status?: ListingStatus;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listListings(query: ListingQuery = {}): Promise<ListResult> {
+  const col = await collection();
+
+  // Cache-aside read: key embeds the current version so a write invalidates all.
+  let cacheKey: string | null = null;
+  if (redis) {
+    const ver = await cacheVersion();
+    cacheKey = `listings:${ver}:${queryKey(query)}`;
+    try {
+      const cached = await redis.get<ListResult>(cacheKey);
+      if (cached) return cached;
+    } catch {
+      /* fall through to Mongo on any cache read error */
+    }
+  }
+
+  const filter: Filter<ListingDoc> = {};
+  if (query.status) filter.status = query.status;
+  if (query.propertyType) filter.property_type = query.propertyType as PropertyType;
+  if (query.featured) filter.is_featured = true;
+
+  let cursor = col.find(filter).sort({ created_at: -1 });
+  if (query.offset) cursor = cursor.skip(query.offset);
+  if (query.limit) cursor = cursor.limit(query.limit);
+
+  const [docs, count] = await Promise.all([cursor.toArray(), col.countDocuments(filter)]);
+  const result: ListResult = { data: docs.map(toListing), count };
+
+  if (redis && cacheKey) {
+    try {
+      await redis.set(cacheKey, result, { ex: CACHE_TTL });
+    } catch {
+      /* caching is best-effort */
+    }
+  }
+  return result;
+}
+
+export async function countListings(filter: { status?: ListingStatus } = {}): Promise<number> {
+  const col = await collection();
+  const query: Filter<ListingDoc> = {};
+  if (filter.status) query.status = filter.status;
+  return col.countDocuments(query);
+}
+
+export async function getListingById(id: string): Promise<Listing | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  const doc = await col.findOne({ _id: new ObjectId(id) });
+  return doc ? toListing(doc) : null;
+}
+
+export async function createListing(data: ListingInsert): Promise<Listing> {
+  const col = await collection();
+  await snapshotBeforeWrite(col);
+  const now = new Date();
+  const doc = { ...withDefaults(data), created_at: now, updated_at: now } as ListingDoc;
+  const result = await col.insertOne(doc);
+  await invalidate();
+  return toListing({ ...doc, _id: result.insertedId });
+}
+
+export async function updateListing(id: string, data: ListingUpdate): Promise<Listing | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  await snapshotBeforeWrite(col);
+  const result = await col.findOneAndUpdate(
+    { _id: new ObjectId(id) },
+    { $set: { ...data, updated_at: new Date() } },
+    { returnDocument: "after" }
+  );
+  if (result) await invalidate();
+  return result ? toListing(result) : null;
+}
+
+export async function deleteListing(id: string): Promise<boolean> {
+  if (!ObjectId.isValid(id)) return false;
+  const col = await collection();
+  await snapshotBeforeWrite(col);
+  const result = await col.deleteOne({ _id: new ObjectId(id) });
+  if (result.deletedCount > 0) await invalidate();
+  return result.deletedCount > 0;
+}

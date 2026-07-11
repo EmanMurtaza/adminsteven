@@ -2,16 +2,27 @@
 -- https://lktmlevsotbvnkkcrreg.supabase.co
 --
 -- NOTE: This file documents the LIVE schema shared with the main website
--- (stevenmoning.vercel.app). The admin panel reads/writes `properties` and
--- `blogs` — the same tables the main site renders. Do not create separate
--- admin-only tables (an earlier `listings`/`blog_posts` pair caused the admin
--- and the live site to drift apart).
+-- (stevenmoning.vercel.app). The admin panel writes `blogs` here — the same
+-- table the main site renders. Do not create separate admin-only tables for
+-- content the public site also reads (an earlier `listings`/`blog_posts`
+-- pair caused the admin and the live site to drift apart).
 --
--- RLS: both tables only allow the anon key to SELECT published rows.
+-- LISTINGS HAVE MOVED OFF THIS DATABASE. As of the MongoDB migration,
+-- property listings live in MongoDB Atlas (`stevenmoning` db, `listings`
+-- collection — see lib/mongodb.ts, lib/listings.ts). The `properties` table
+-- below is kept only as a historical record / migration source
+-- (scripts/migrate-properties-to-mongo.mjs reads it once); it is no longer
+-- read or written by the app. To avoid repeating the drift incident above,
+-- there is exactly ONE reader/writer path for listings now: this admin app's
+-- lib/listings.ts. The public site and any other caller MUST go through the
+-- admin app's GET /api/listings — nothing else should connect to Mongo
+-- directly.
+--
+-- RLS: `blogs` only allows the anon key to SELECT published rows.
 -- All admin reads and writes go through the service role
 -- (see lib/supabase/server.ts → createAuthedServiceClient).
 
--- ─── properties ──────────────────────────────────────────────────────────────
+-- ─── properties (legacy — superseded by MongoDB `listings`) ──────────────────
 -- property_type check: 'luxury' | 'land' | 'off_market'
 -- status check:        'draft' | 'published' | 'archived'
 -- Notable defaults: state='TX', is_featured=false, pool=false,

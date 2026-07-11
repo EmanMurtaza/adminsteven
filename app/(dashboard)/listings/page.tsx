@@ -1,23 +1,24 @@
 import Header from "@/components/layout/Header";
 import ListingsTable from "@/components/listings/ListingsTable";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
+import { deleteListing as deleteListingDoc, listListings } from "@/lib/listings";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 export default async function ListingsPage() {
-  // Drafts are hidden from the anon key by RLS — admin reads need service role
+  // Auth still gated by Supabase; the listings themselves now live in MongoDB.
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
-  const { data: listings, error } = await supabase
-    .from("properties")
-    .select("*")
-    .order("created_at", { ascending: false });
 
-  if (error) {
+  let listings;
+  try {
+    ({ data: listings } = await listListings({}));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     return (
       <p className="p-4 sm:p-8 text-burgundy">
-        Failed to load listings: {error.message}
+        Failed to load listings: {message}
       </p>
     );
   }
@@ -26,10 +27,10 @@ export default async function ListingsPage() {
     "use server";
     const supabase = await createAuthedServiceClient();
     if (!supabase) return { error: "Not signed in — please log in again." };
-    const { error } = await supabase.from("properties").delete().eq("id", id);
+    const deleted = await deleteListingDoc(id);
     revalidatePath("/listings");
     revalidatePath("/dashboard");
-    return { error: error?.message };
+    return deleted ? {} : { error: "Listing not found" };
   }
 
   return (

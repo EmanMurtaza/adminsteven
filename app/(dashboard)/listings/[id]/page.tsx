@@ -1,5 +1,6 @@
 import Header from "@/components/layout/Header";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
+import { getListingById } from "@/lib/listings";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -7,7 +8,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
-  const { data: listing } = await supabase.from("properties").select("*").eq("id", id).single();
+  const listing = await getListingById(id);
 
   if (!listing) notFound();
 

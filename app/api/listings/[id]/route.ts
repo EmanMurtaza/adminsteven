@@ -1,72 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { deleteListing, getListingById, updateListing } from "@/lib/listings";
+import { withCors } from "@/lib/cors";
 
-const CORS_ORIGIN = "https://stevenmoning.vercel.app";
+const cors = (res: NextResponse, req: NextRequest) => withCors(res, req, "GET, PUT, DELETE, OPTIONS");
 
-function cors(res: NextResponse): NextResponse {
-  res.headers.set("Access-Control-Allow-Origin", CORS_ORIGIN);
-  res.headers.set("Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type, x-api-key");
-  return res;
-}
-
-export async function OPTIONS() {
-  return cors(new NextResponse(null, { status: 204 }));
+export async function OPTIONS(req: NextRequest) {
+  return cors(new NextResponse(null, { status: 204 }), req);
 }
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/listings/:id
-export async function GET(_req: NextRequest, { params }: Params) {
+// GET /api/listings/:id — public; strip private `meta` (see route.ts).
+export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createServiceClient();
-  const { data, error } = await supabase.from("properties").select("*").eq("id", id).single();
+  const data = await getListingById(id);
 
-  if (error || !data) {
-    return cors(NextResponse.json({ error: "Not found" }, { status: 404 }));
+  if (!data) {
+    return cors(NextResponse.json({ error: "Not found" }, { status: 404 }), req);
   }
 
-  return cors(NextResponse.json({ data }));
+  const { meta: _meta, ...pub } = data;
+  return cors(NextResponse.json({ data: pub }), req);
 }
 
 // PUT /api/listings/:id
 export async function PUT(request: NextRequest, { params }: Params) {
   if (!isAuthorized(request)) {
-    return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }), request);
   }
 
   const { id } = await params;
   const body = await request.json();
-  const supabase = await createServiceClient();
-  const { data, error } = await supabase
-    .from("properties")
-    .update({ ...body, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
 
-  if (error) {
-    return cors(NextResponse.json({ error: error.message }, { status: 400 }));
+  try {
+    const data = await updateListing(id, body);
+    if (!data) {
+      return cors(NextResponse.json({ error: "Not found" }, { status: 404 }), request);
+    }
+    return cors(NextResponse.json({ data }), request);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return cors(NextResponse.json({ error: message }, { status: 400 }), request);
   }
-
-  return cors(NextResponse.json({ data }));
 }
 
 // DELETE /api/listings/:id
 export async function DELETE(request: NextRequest, { params }: Params) {
   if (!isAuthorized(request)) {
-    return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }), request);
   }
 
   const { id } = await params;
-  const supabase = await createServiceClient();
-  const { error } = await supabase.from("properties").delete().eq("id", id);
+  const deleted = await deleteListing(id);
 
-  if (error) {
-    return cors(NextResponse.json({ error: error.message }, { status: 400 }));
+  if (!deleted) {
+    return cors(NextResponse.json({ error: "Not found" }, { status: 404 }), request);
   }
 
-  return cors(NextResponse.json({ success: true }));
+  return cors(NextResponse.json({ success: true }), request);
 }
 
 function isAuthorized(request: NextRequest): boolean {

@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createListing, listListings } from "@/lib/listings";
+import { withCors } from "@/lib/cors";
+import { Listing, ListingStatus } from "@/lib/types";
 
-const CORS_ORIGIN = "https://stevenmoning.vercel.app";
+const cors = (res: NextResponse, req: NextRequest) => withCors(res, req, "GET, POST, OPTIONS");
 
-function cors(res: NextResponse): NextResponse {
-  res.headers.set("Access-Control-Allow-Origin", CORS_ORIGIN);
-  res.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type, x-api-key");
-  return res;
+// `meta` holds private deal data (owner names, mailing addresses, parcel IDs,
+// legal descriptions, holding entity). It must NEVER reach the public browser.
+// Strip it from every public GET response — the authed admin reads full docs
+// through lib/listings.ts directly, so this only affects the HTTP boundary.
+function toPublic({ meta: _meta, ...rest }: Listing): Omit<Listing, "meta"> {
+  return rest;
 }
 
-export async function OPTIONS() {
-  return cors(new NextResponse(null, { status: 204 }));
+export async function OPTIONS(req: NextRequest) {
+  return cors(new NextResponse(null, { status: 204 }), req);
 }
 
 // GET /api/listings — called by the main website to fetch published listings
@@ -20,45 +23,39 @@ export async function GET(request: NextRequest) {
   // `type` preferred; `category` kept as an alias for older callers
   const propertyType = searchParams.get("type") ?? searchParams.get("category");
   const featured = searchParams.get("featured");
-  const status = searchParams.get("status") ?? "published";
+  const status = (searchParams.get("status") ?? "published") as ListingStatus;
   const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
   const offset = Number(searchParams.get("offset") ?? 0);
 
-  const supabase = await createServiceClient();
-  let query = supabase
-    .from("properties")
-    .select("*")
-    .eq("status", status)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (propertyType) query = query.eq("property_type", propertyType);
-  if (featured === "true") query = query.eq("is_featured", true);
-
-  const { data, error, count } = await query;
-
-  if (error) {
-    return cors(NextResponse.json({ error: error.message }, { status: 500 }));
+  try {
+    const { data, count } = await listListings({
+      status,
+      propertyType,
+      featured: featured === "true",
+      limit,
+      offset,
+    });
+    return cors(NextResponse.json({ data: data.map(toPublic), count }), request);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return cors(NextResponse.json({ error: message }, { status: 500 }), request);
   }
-
-  return cors(NextResponse.json({ data, count }));
 }
 
 // POST /api/listings — create a listing (internal admin use, protected by API key)
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
-    return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    return cors(NextResponse.json({ error: "Unauthorized" }, { status: 401 }), request);
   }
 
   const body = await request.json();
-  const supabase = await createServiceClient();
-  const { data, error } = await supabase.from("properties").insert(body).select().single();
-
-  if (error) {
-    return cors(NextResponse.json({ error: error.message }, { status: 400 }));
+  try {
+    const data = await createListing(body);
+    return cors(NextResponse.json({ data }, { status: 201 }), request);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return cors(NextResponse.json({ error: message }, { status: 400 }), request);
   }
-
-  return cors(NextResponse.json({ data }, { status: 201 }));
 }
 
 function isAuthorized(request: NextRequest): boolean {

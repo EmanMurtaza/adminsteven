@@ -1,31 +1,26 @@
 import Header from "@/components/layout/Header";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
+import { countListings } from "@/lib/listings";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
-  // Drafts are hidden from the anon key by RLS — admin reads need service role
+  // Auth still gated by Supabase; listing counts now come from MongoDB.
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
 
-  const [
-    { count: total },
-    { count: published },
-    { count: drafts },
-    { count: totalPosts },
-    { count: publishedPosts },
-  ] = await Promise.all([
-    supabase.from("properties").select("*", { count: "exact", head: true }),
-    supabase.from("properties").select("*", { count: "exact", head: true }).eq("status", "published"),
-    supabase.from("properties").select("*", { count: "exact", head: true }).eq("status", "draft"),
+  const [total, published, drafts, { count: totalPosts }, { count: publishedPosts }] = await Promise.all([
+    countListings(),
+    countListings({ status: "published" }),
+    countListings({ status: "draft" }),
     supabase.from("blogs").select("*", { count: "exact", head: true }),
     supabase.from("blogs").select("*", { count: "exact", head: true }).eq("status", "published"),
   ]);
 
   const stats = [
-    { label: "Total Listings", value: total ?? 0 },
-    { label: "Published Listings", value: published ?? 0 },
-    { label: "Draft Listings", value: drafts ?? 0 },
+    { label: "Total Listings", value: total },
+    { label: "Published Listings", value: published },
+    { label: "Draft Listings", value: drafts },
     { label: "Blog Posts", value: totalPosts ?? 0 },
     { label: "Published Posts", value: publishedPosts ?? 0 },
   ];

@@ -1,6 +1,7 @@
 import Header from "@/components/layout/Header";
 import ListingForm from "@/components/listings/ListingForm";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
+import { getListingById, updateListing as updateListingDoc } from "@/lib/listings";
 import { ListingInsert } from "@/lib/types";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -9,7 +10,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
-  const { data: listing } = await supabase.from("properties").select("*").eq("id", id).single();
+  const listing = await getListingById(id);
 
   if (!listing) notFound();
 
@@ -17,13 +18,16 @@ export default async function EditListingPage({ params }: { params: Promise<{ id
     "use server";
     const supabase = await createAuthedServiceClient();
     if (!supabase) return { error: "Not signed in — please log in again." };
-    const { error } = await supabase.from("properties").update(data).eq("id", id);
-    if (!error) {
+    try {
+      const updated = await updateListingDoc(id, data);
+      if (!updated) return { error: "Listing not found" };
       revalidatePath("/listings");
       revalidatePath(`/listings/${id}`);
       revalidatePath("/dashboard");
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Unknown error" };
     }
-    return { error: error?.message };
   }
 
   return (

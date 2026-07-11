@@ -1,6 +1,7 @@
 import Header from "@/components/layout/Header";
 import ListingForm from "@/components/listings/ListingForm";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
+import { createListing as createListingDoc } from "@/lib/listings";
 import { ListingInsert } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 
@@ -9,12 +10,14 @@ export default function NewListingPage() {
     "use server";
     const supabase = await createAuthedServiceClient();
     if (!supabase) return { error: "Not signed in — please log in again." };
-    const { error } = await supabase.from("properties").insert(data);
-    if (!error) {
+    try {
+      await createListingDoc(data);
       revalidatePath("/listings");
       revalidatePath("/dashboard");
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Unknown error" };
     }
-    return { error: error?.message };
   }
 
   return (

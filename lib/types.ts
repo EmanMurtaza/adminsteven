@@ -116,20 +116,3 @@ export const BLOG_CATEGORIES = [
 
 export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
 
-// Original blog_posts table (read by the main site / stevenmoning.vercel.app)
-export interface BlogRecord {
-  id: number;
-  slug: string;
-  title: string;
-  excerpt: string | null;
-  cat: BlogCategory;
-  image: string | null;
-  author: string | null;
-  content: string | null;
-  published_at: string | null;
-  created_at: string;
-}
-
-export type BlogRecordInsert = Omit<BlogRecord, "id" | "created_at">;
-export type BlogRecordUpdate = Partial<BlogRecordInsert>;
-
