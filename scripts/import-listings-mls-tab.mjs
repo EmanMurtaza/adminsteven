@@ -185,6 +185,7 @@ rows.forEach((cells, rowIndex) => {
     property_type: "land",                        // every row is a parcel
     status: price != null ? "published" : "draft", // house rule: no price -> draft
     is_featured: false,
+    is_off_market: offMarket,                     // MLS# cell literally reads "OFF MARKET"
     address: street,
     city,
     state: "TX",

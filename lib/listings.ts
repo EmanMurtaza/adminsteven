@@ -87,6 +87,7 @@ function withDefaults(data: ListingInsert) {
     slug: null,
     description: null,
     is_featured: false,
+    is_off_market: false,
     address: null,
     city: null,
     state: "TX",

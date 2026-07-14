@@ -279,6 +279,7 @@ function buildDoc(cells, map, agent, rowIndex, now) {
     property_type: "land",
     status: "draft",
     is_featured: false,
+    is_off_market: true, // private wholesale/acquisition deals, never MLS-listed
     address: street,
     city,
     state: "TX",

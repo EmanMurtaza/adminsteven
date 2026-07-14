@@ -41,6 +41,9 @@ export interface Listing {
   property_type: PropertyType;
   status: ListingStatus;
   is_featured: boolean;
+  // Sales channel, independent of property_type: a parcel can be BOTH land and
+  // off-market. property_type says what it is; this says how it's sold.
+  is_off_market: boolean;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -80,6 +83,7 @@ export interface ListingInsert {
   property_type: PropertyType;
   status: ListingStatus;
   is_featured?: boolean;
+  is_off_market?: boolean;
   address?: string | null;
   city?: string | null;
   state?: string | null;
