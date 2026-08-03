@@ -47,9 +47,22 @@ export default async function ImportContactsPage() {
 
     let inserted = 0;
     if (toInsert.length) {
+      // PostgREST rejects a batch insert unless every object has exactly the
+      // same keys ("All object keys must match"), so square the rows off
+      // against one column set before sending.
+      const columns = [
+        "first_name", "last_name", "email", "phone",
+        "lead_type", "stage", "source", "tags", "notes", "raw",
+      ] as const;
+      const squared = toInsert.map((d) =>
+        Object.fromEntries(
+          columns.map((c) => [c, (d as Record<string, unknown>)[c] ?? null])
+        )
+      );
+
       // Chunked: a few thousand rows in one request will time out.
-      for (let i = 0; i < toInsert.length; i += 500) {
-        const chunk = toInsert.slice(i, i + 500);
+      for (let i = 0; i < squared.length; i += 500) {
+        const chunk = squared.slice(i, i + 500);
         const { error } = await supabase.from("contacts").insert(chunk);
         if (error) return { inserted, updated: 0, error: error.message };
         inserted += chunk.length;

@@ -15,6 +15,7 @@ import {
   Users,
   Home,
   Contact2,
+  Quote,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
@@ -28,6 +29,7 @@ const nav = [
   { label: "New Listing", href: "/listings/new", icon: PlusCircle },
   { label: "Blog", href: "/blog", icon: BookOpen },
   { label: "New Post", href: "/blog/new", icon: FilePlus },
+  { label: "Testimonials", href: "/testimonials", icon: Quote },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
