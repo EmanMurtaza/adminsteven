@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { BlogPost } from "@/lib/types";
+import { formatDate } from "@/lib/format";
 import { Pencil, Trash2, Eye } from "lucide-react";
 import { useState } from "react";
 
@@ -81,7 +82,7 @@ export default function BlogTable({ posts, onDelete }: BlogTableProps) {
             </div>
             <div className="flex justify-between items-center pt-3 border-t border-gold/15">
               <p className="text-xs text-ink-mute">
-                {new Date(post.created_at).toLocaleDateString()}
+                {formatDate(post.created_at)}
               </p>
               <div className="flex items-center gap-1">
                 <Link
@@ -175,7 +176,7 @@ export default function BlogTable({ posts, onDelete }: BlogTableProps) {
                   </span>
                 </td>
                 <td className="px-5 py-4 text-ink-mute text-xs">
-                  {new Date(post.created_at).toLocaleDateString()}
+                  {formatDate(post.created_at)}
                 </td>
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-1.5">

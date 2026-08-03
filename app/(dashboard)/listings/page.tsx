@@ -1,19 +1,38 @@
 import Header from "@/components/layout/Header";
 import ListingsTable from "@/components/listings/ListingsTable";
+import Pagination from "@/components/ui/Pagination";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { deleteListing as deleteListingDoc, listListings } from "@/lib/listings";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-export default async function ListingsPage() {
+const PAGE_SIZE = 10;
+
+export default async function ListingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   // Auth still gated by Supabase; the listings themselves now live in MongoDB.
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
 
+  const pageParam = (await searchParams).page;
+  const page = Math.max(
+    1,
+    Number(typeof pageParam === "string" ? pageParam : "1") || 1
+  );
+
   let listings;
+  let count = 0;
   try {
-    ({ data: listings } = await listListings({}));
+    const res = await listListings({
+      offset: (page - 1) * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    });
+    listings = res.data;
+    count = res.count;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return (
@@ -22,6 +41,8 @@ export default async function ListingsPage() {
       </p>
     );
   }
+
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
 
   async function deleteListing(id: string) {
     "use server";
@@ -39,10 +60,7 @@ export default async function ListingsPage() {
       <main className="p-4 sm:p-8 space-y-5">
         <div className="flex justify-between items-center gap-3 flex-wrap">
           <p className="text-sm text-ink-mute">
-            <span className="font-serif text-navy text-base">
-              {listings?.length ?? 0}
-            </span>{" "}
-            total
+            <span className="font-serif text-navy text-base">{count}</span> total
           </p>
           <Link
             href="/listings/new"
@@ -53,6 +71,7 @@ export default async function ListingsPage() {
           </Link>
         </div>
         <ListingsTable listings={listings ?? []} onDelete={deleteListing} />
+        <Pagination currentPage={page} totalPages={totalPages} basePath="/listings" />
       </main>
     </>
   );

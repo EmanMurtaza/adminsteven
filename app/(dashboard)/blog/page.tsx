@@ -1,18 +1,34 @@
 import Header from "@/components/layout/Header";
 import BlogTable from "@/components/blog/BlogTable";
+import Pagination from "@/components/ui/Pagination";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-export default async function BlogPage() {
+const PAGE_SIZE = 10;
+
+export default async function BlogPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   // Drafts are hidden from the anon key by RLS — admin reads need service role
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
-  const { data: posts, error } = await supabase
+
+  const pageParam = (await searchParams).page;
+  const page = Math.max(
+    1,
+    Number(typeof pageParam === "string" ? pageParam : "1") || 1
+  );
+  const from = (page - 1) * PAGE_SIZE;
+
+  const { data: posts, error, count } = await supabase
     .from("blogs")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, from + PAGE_SIZE - 1);
 
   if (error) {
     return (
@@ -21,6 +37,8 @@ export default async function BlogPage() {
       </p>
     );
   }
+
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
   async function deletePost(id: string) {
     "use server";
@@ -37,9 +55,7 @@ export default async function BlogPage() {
       <main className="p-4 sm:p-8 space-y-5">
         <div className="flex justify-between items-center gap-3 flex-wrap">
           <p className="text-sm text-ink-mute">
-            <span className="font-serif text-navy text-base">
-              {posts?.length ?? 0}
-            </span>{" "}
+            <span className="font-serif text-navy text-base">{count ?? 0}</span>{" "}
             total
           </p>
           <Link
@@ -51,6 +67,7 @@ export default async function BlogPage() {
           </Link>
         </div>
         <BlogTable posts={posts ?? []} onDelete={deletePost} />
+        <Pagination currentPage={page} totalPages={totalPages} basePath="/blog" />
       </main>
     </>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Listing, PROPERTY_TYPES } from "@/lib/types";
+import { formatDate, formatPrice } from "@/lib/format";
 import { Pencil, Trash2, Eye } from "lucide-react";
 import { useState } from "react";
 
@@ -82,9 +83,7 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                   Price
                 </p>
                 <p className="text-sm font-medium text-navy">
-                  {listing.price != null
-                    ? `$${listing.price.toLocaleString()}`
-                    : "—"}
+                  {formatPrice(listing.price)}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -142,9 +141,7 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                 <td className="px-5 py-4 text-ink-soft">{typeLabel(listing.property_type)}</td>
                 <td className="px-5 py-4 text-ink-soft">{listing.city ?? "—"}</td>
                 <td className="px-5 py-4 text-ink-soft font-medium">
-                  {listing.price != null
-                    ? `$${listing.price.toLocaleString()}`
-                    : "—"}
+                  {formatPrice(listing.price)}
                 </td>
                 <td className="px-5 py-4">
                   <span
@@ -154,7 +151,7 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                   </span>
                 </td>
                 <td className="px-5 py-4 text-ink-mute text-xs">
-                  {new Date(listing.created_at).toLocaleDateString()}
+                  {formatDate(listing.created_at)}
                 </td>
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-1.5">

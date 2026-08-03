@@ -1,5 +1,6 @@
 import Header from "@/components/layout/Header";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
+import { formatDateLong } from "@/lib/format";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Pencil } from "lucide-react";
@@ -42,11 +43,7 @@ export default async function ViewBlogPostPage({
               <span className="text-sm text-ink-mute">By {post.author}</span>
             )}
             <span className="text-sm text-ink-mute">
-              {new Date(post.created_at).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
+              {formatDateLong(post.created_at)}
             </span>
             <Link
               href={`/blog/${post.id}/edit`}

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Listing, ListingInsert, PROPERTY_TYPES } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import { ImageIcon, X } from "lucide-react";
 
 interface ListingFormProps {
   initialData?: Partial<Listing>;
@@ -14,6 +16,13 @@ const inputClass =
 
 const labelClass =
   "block text-xs font-medium uppercase tracking-wider text-ink-soft mb-2";
+
+// Hard per-image size cap. Must match the bucket's file_size_limit set in
+// supabase/create_property_images_bucket.sql (5 MB). This client check just
+// gives instant feedback; Storage enforces the real limit server-side.
+const MAX_IMAGE_MB = 5;
+const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;
+const PROPERTY_BUCKET = "property-images";
 
 function slugify(str: string) {
   return str
@@ -28,6 +37,8 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<ListingInsert>({
     title: initialData?.title ?? "",
@@ -66,6 +77,60 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
 
   const num = (v: string) => (v === "" ? null : Number(v));
 
+  // Raw land has no beds/baths/interior, so we hide those fields for it.
+  const isLand = form.property_type === "land";
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    setError(null);
+
+    // Reject oversized files up front (Storage also enforces this server-side).
+    const tooBig = files.filter((f) => f.size > MAX_IMAGE_BYTES);
+    const valid = files.filter((f) => f.size <= MAX_IMAGE_BYTES);
+    if (tooBig.length > 0) {
+      setError(
+        `Skipped ${tooBig.length} image(s) over ${MAX_IMAGE_MB} MB: ` +
+          tooBig.map((f) => f.name).join(", ")
+      );
+    }
+    if (valid.length === 0) {
+      e.target.value = "";
+      return;
+    }
+
+    setImageUploading(true);
+    const supabase = createClient();
+    const uploaded: string[] = [];
+    for (const file of valid) {
+      const ext = file.name.split(".").pop() ?? "jpg";
+      const path = `listings/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { data, error: uploadError } = await supabase.storage
+        .from(PROPERTY_BUCKET)
+        .upload(path, file);
+      if (uploadError) {
+        setError("Image upload failed: " + uploadError.message);
+        continue;
+      }
+      if (data) {
+        const { data: urlData } = supabase.storage
+          .from(PROPERTY_BUCKET)
+          .getPublicUrl(data.path);
+        uploaded.push(urlData.publicUrl);
+      }
+    }
+    setForm((prev) => ({ ...prev, images: [...(prev.images ?? []), ...uploaded] }));
+    setImageUploading(false);
+    e.target.value = "";
+  }
+
+  function removeImage(url: string) {
+    setForm((prev) => ({
+      ...prev,
+      images: (prev.images ?? []).filter((u) => u !== url),
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -82,6 +147,18 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
       neighborhood: form.neighborhood || null,
       virtual_tour_url: form.virtual_tour_url || null,
       mls_number: form.mls_number || null,
+      // For land, drop residential details so stale values aren't persisted
+      // (e.g. a home reclassified as land keeping its old bed/bath counts).
+      ...(isLand
+        ? {
+            bedrooms: null,
+            bathrooms: null,
+            square_footage: null,
+            year_built: null,
+            garage_spaces: null,
+            pool: false,
+          }
+        : {}),
     };
     const result = await onSubmit(payload);
     setLoading(false);
@@ -243,51 +320,71 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
       {/* Details */}
       <fieldset className="space-y-4 border-t border-gold/15 pt-4">
         <legend className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-dark pt-4">
-          Details
+          {isLand ? "Land Details" : "Details"}
         </legend>
+        {isLand && (
+          <p className="text-xs text-ink-mute -mt-1">
+            Residential fields (beds, baths, interior sq ft, year built,
+            garage, pool) are hidden for land listings.
+          </p>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <label className={labelClass}>Beds</label>
-            <input
-              type="number"
-              min={0}
-              value={form.bedrooms ?? ""}
-              onChange={(e) => set("bedrooms", num(e.target.value))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Baths</label>
-            <input
-              type="number"
-              min={0}
-              step="0.5"
-              value={form.bathrooms ?? ""}
-              onChange={(e) => set("bathrooms", num(e.target.value))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Sq Ft</label>
-            <input
-              type="number"
-              min={0}
-              value={form.square_footage ?? ""}
-              onChange={(e) => set("square_footage", num(e.target.value))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Year Built</label>
-            <input
-              type="number"
-              min={1800}
-              max={2100}
-              value={form.year_built ?? ""}
-              onChange={(e) => set("year_built", num(e.target.value))}
-              className={inputClass}
-            />
-          </div>
+          {!isLand && (
+            <>
+              <div>
+                <label className={labelClass}>Beds</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.bedrooms ?? ""}
+                  onChange={(e) => set("bedrooms", num(e.target.value))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Baths</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={form.bathrooms ?? ""}
+                  onChange={(e) => set("bathrooms", num(e.target.value))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Sq Ft</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.square_footage ?? ""}
+                  onChange={(e) => set("square_footage", num(e.target.value))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Year Built</label>
+                <input
+                  type="number"
+                  min={1800}
+                  max={2100}
+                  value={form.year_built ?? ""}
+                  onChange={(e) => set("year_built", num(e.target.value))}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Garage</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.garage_spaces ?? ""}
+                  onChange={(e) => set("garage_spaces", num(e.target.value))}
+                  className={inputClass}
+                />
+              </div>
+            </>
+          )}
           <div>
             <label className={labelClass}>Lot (acres)</label>
             <input
@@ -296,16 +393,6 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
               step="0.01"
               value={form.lot_size_acres ?? ""}
               onChange={(e) => set("lot_size_acres", num(e.target.value))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Garage</label>
-            <input
-              type="number"
-              min={0}
-              value={form.garage_spaces ?? ""}
-              onChange={(e) => set("garage_spaces", num(e.target.value))}
               className={inputClass}
             />
           </div>
@@ -330,15 +417,17 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
           />
         </div>
         <div className="flex flex-wrap gap-6 pt-1">
-          <label className="flex items-center gap-2.5 text-sm text-navy cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.pool ?? false}
-              onChange={(e) => set("pool", e.target.checked)}
-              className="w-4 h-4 accent-[#d4a84b]"
-            />
-            Pool
-          </label>
+          {!isLand && (
+            <label className="flex items-center gap-2.5 text-sm text-navy cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.pool ?? false}
+                onChange={(e) => set("pool", e.target.checked)}
+                className="w-4 h-4 accent-[#d4a84b]"
+              />
+              Pool
+            </label>
+          )}
           <label className="flex items-center gap-2.5 text-sm text-navy cursor-pointer">
             <input
               type="checkbox"
@@ -349,6 +438,66 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
             Featured on homepage
           </label>
         </div>
+      </fieldset>
+
+      {/* Photos */}
+      <fieldset className="space-y-4 border-t border-gold/15 pt-4">
+        <legend className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-dark pt-4">
+          Photos
+        </legend>
+        {(form.images?.length ?? 0) > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+            {form.images?.map((url, i) => (
+              <div
+                key={url}
+                className="relative rounded-lg overflow-hidden border border-gold/25 group aspect-[4/3]"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt={`Listing photo ${i + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                {i === 0 && (
+                  <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-navy/80 text-cream text-[9px] rounded uppercase tracking-wider">
+                    Cover
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeImage(url)}
+                  className="absolute top-1 right-1 p-1 bg-burgundy/90 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-burgundy"
+                  aria-label="Remove photo"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => imageInputRef.current?.click()}
+          disabled={imageUploading}
+          className="w-full h-28 border-2 border-dashed border-gold/35 rounded-lg text-ink-mute hover:border-gold hover:text-navy transition-colors flex flex-col items-center justify-center gap-2 disabled:opacity-50"
+        >
+          <ImageIcon size={22} className="text-gold/60" />
+          <span className="text-sm">
+            {imageUploading ? "Uploading…" : "Upload photos"}
+          </span>
+          <span className="text-xs text-ink-mute/70">
+            Select one or more images — the first is used as the cover · max{" "}
+            {MAX_IMAGE_MB} MB each
+          </span>
+        </button>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleImageUpload}
+          className="hidden"
+        />
       </fieldset>
 
       <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-gold/15">

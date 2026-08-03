@@ -9,15 +9,24 @@ export default async function DashboardPage() {
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
 
-  const [total, published, drafts, { count: totalPosts }, { count: publishedPosts }] = await Promise.all([
+  const [
+    total,
+    published,
+    drafts,
+    { count: totalPosts },
+    { count: publishedPosts },
+    { count: newInquiries },
+  ] = await Promise.all([
     countListings(),
     countListings({ status: "published" }),
     countListings({ status: "draft" }),
     supabase.from("blogs").select("*", { count: "exact", head: true }),
     supabase.from("blogs").select("*", { count: "exact", head: true }).eq("status", "published"),
+    supabase.from("contact_submissions").select("*", { count: "exact", head: true }).eq("is_read", false),
   ]);
 
   const stats = [
+    { label: "New Enquiries", value: newInquiries ?? 0, href: "/inquiries/buyers" },
     { label: "Total Listings", value: total },
     { label: "Published Listings", value: published },
     { label: "Draft Listings", value: drafts },
@@ -30,21 +39,36 @@ export default async function DashboardPage() {
       <Header title="Dashboard" />
       <main className="p-4 sm:p-8 space-y-6 sm:space-y-8">
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-5">
-          {stats.map(({ label, value }) => (
-            <div
-              key={label}
-              className="bg-white border border-gold/25 rounded-xl p-5 sm:p-6 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)] hover:shadow-[0_8px_30px_-12px_rgba(14,27,48,0.18)] transition-shadow"
-            >
-              <p className="text-[10px] sm:text-xs uppercase tracking-[0.18em] text-ink-mute">
-                {label}
-              </p>
-              <p className="font-serif text-3xl sm:text-4xl font-semibold text-navy mt-3">
-                {value}
-              </p>
-              <div className="h-px w-8 bg-gold mt-4" />
-            </div>
-          ))}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5">
+          {stats.map(({ label, value, href }) => {
+            const card = (
+              <>
+                <p className="text-[10px] sm:text-xs uppercase tracking-[0.18em] text-ink-mute">
+                  {label}
+                </p>
+                <p className="font-serif text-3xl sm:text-4xl font-semibold text-navy mt-3">
+                  {value}
+                </p>
+                <div className="h-px w-8 bg-gold mt-4" />
+              </>
+            );
+            const shell =
+              "block bg-white border rounded-xl p-5 sm:p-6 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)] hover:shadow-[0_8px_30px_-12px_rgba(14,27,48,0.18)] transition-shadow";
+            // An unread count is only useful if it takes you to the unread list.
+            return href ? (
+              <Link
+                key={label}
+                href={href}
+                className={`${shell} ${value > 0 ? "border-gold" : "border-gold/25"}`}
+              >
+                {card}
+              </Link>
+            ) : (
+              <div key={label} className={`${shell} border-gold/25`}>
+                {card}
+              </div>
+            );
+          })}
         </div>
 
         {/* Quick actions */}

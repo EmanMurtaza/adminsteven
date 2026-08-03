@@ -38,7 +38,14 @@ export default function RootLayout({
       lang="en"
       className={`${serif.variable} ${sans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-cream text-ink">
+      {/* suppressHydrationWarning: browser extensions (e.g. Smart Converter)
+          inject attributes like data-smart-converter-loaded onto <body> before
+          React hydrates, causing a harmless attribute mismatch. This flag only
+          silences that one element's attribute/text diff, one level deep. */}
+      <body
+        suppressHydrationWarning
+        className="min-h-full flex flex-col bg-cream text-ink"
+      >
         {children}
       </body>
     </html>
