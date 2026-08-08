@@ -210,3 +210,69 @@ export async function deleteListing(id: string): Promise<boolean> {
   if (result.deletedCount > 0) await invalidate();
   return result.deletedCount > 0;
 }
+
+// ── BI dashboard aggregates ─────────────────────────────────────────────────
+
+export interface ListingAnalytics {
+  totalCount: number;
+  byStatus: { status: string; count: number }[];
+  byPropertyType: { propertyType: string; count: number }[];
+  offMarketCount: number;
+  featuredCount: number;
+  avgPrice: number | null;
+  avgDaysOnMarket: number | null;
+}
+
+interface TotalsFacet {
+  totalCount: number;
+  offMarketCount: number;
+  featuredCount: number;
+  avgPrice: number | null;
+  avgDaysOnMarket: number | null;
+}
+
+export async function getListingAnalytics(): Promise<ListingAnalytics> {
+  const col = await collection();
+
+  const [byStatus, byPropertyType, totalsRows] = await Promise.all([
+    col
+      .aggregate<{ _id: string | null; count: number }>([
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ])
+      .toArray(),
+    col
+      .aggregate<{ _id: string | null; count: number }>([
+        { $group: { _id: "$property_type", count: { $sum: 1 } } },
+      ])
+      .toArray(),
+    col
+      .aggregate<TotalsFacet>([
+        {
+          $group: {
+            _id: null,
+            totalCount: { $sum: 1 },
+            offMarketCount: { $sum: { $cond: ["$is_off_market", 1, 0] } },
+            featuredCount: { $sum: { $cond: ["$is_featured", 1, 0] } },
+            avgPrice: { $avg: "$price" },
+            avgDaysOnMarket: { $avg: "$days_on_market" },
+          },
+        },
+      ])
+      .toArray(),
+  ]);
+
+  const totals = totalsRows[0];
+
+  return {
+    totalCount: totals?.totalCount ?? 0,
+    byStatus: byStatus.map((d) => ({ status: d._id ?? "unknown", count: d.count })),
+    byPropertyType: byPropertyType.map((d) => ({
+      propertyType: d._id ?? "unknown",
+      count: d.count,
+    })),
+    offMarketCount: totals?.offMarketCount ?? 0,
+    featuredCount: totals?.featuredCount ?? 0,
+    avgPrice: totals?.avgPrice ?? null,
+    avgDaysOnMarket: totals?.avgDaysOnMarket ?? null,
+  };
+}

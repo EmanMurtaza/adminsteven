@@ -72,3 +72,13 @@ export function formatPrice(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   return `$${value.toLocaleString(LOCALE)}`;
 }
+
+/**
+ * Percent change from `previous` to `current`, for a stat card's delta badge.
+ * Null when there is no baseline to compare against (0 in both periods reads
+ * as "nothing changed", not "infinite growth").
+ */
+export function percentChange(current: number, previous: number): number | null {
+  if (previous === 0) return current === 0 ? null : 100;
+  return ((current - previous) / previous) * 100;
+}

@@ -2,6 +2,8 @@ import Header from "@/components/layout/Header";
 import CsvImporter from "@/components/contacts/CsvImporter";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { ContactDraft } from "@/lib/contacts";
+import { ImportBatch, importBatchLabel } from "@/lib/importBatches";
+import { formatDateTime } from "@/lib/format";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -10,11 +12,41 @@ export default async function ImportContactsPage() {
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
 
-  async function importContacts(drafts: ContactDraft[]) {
+  const { data: batchData } = await supabase
+    .from("import_batches")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(10);
+  const batches = (batchData ?? []) as ImportBatch[];
+
+  async function importContacts(input: {
+    drafts: ContactDraft[];
+    fileName: string;
+    source: string;
+    skippedCount: number;
+  }) {
     "use server";
+    const { drafts, fileName, source, skippedCount } = input;
     const supabase = await createAuthedServiceClient();
     if (!supabase) return { error: "Not signed in — please log in again." };
-    if (!drafts.length) return { inserted: 0, updated: 0 };
+
+    async function logBatch(inserted: number, updated: number) {
+      // Audit trail only — never let a logging failure block a real import.
+      await supabase!.from("import_batches").insert({
+        kind: "csv",
+        file_name: fileName || null,
+        source: source || null,
+        inserted_count: inserted,
+        updated_count: updated,
+        skipped_count: skippedCount,
+      });
+    }
+
+    if (!drafts.length) {
+      await logBatch(0, 0);
+      revalidatePath("/contacts/import");
+      return { inserted: 0, updated: 0 };
+    }
 
     // Split on what already exists so we can report honest numbers and, more
     // importantly, avoid trampling stage/notes/follow-up on contacts Steven has
@@ -64,7 +96,11 @@ export default async function ImportContactsPage() {
       for (let i = 0; i < squared.length; i += 500) {
         const chunk = squared.slice(i, i + 500);
         const { error } = await supabase.from("contacts").insert(chunk);
-        if (error) return { inserted, updated: 0, error: error.message };
+        if (error) {
+          await logBatch(inserted, 0);
+          revalidatePath("/contacts/import");
+          return { inserted, updated: 0, error: error.message };
+        }
         inserted += chunk.length;
       }
     }
@@ -75,7 +111,9 @@ export default async function ImportContactsPage() {
       if (!error) updated++;
     }
 
+    await logBatch(inserted, updated);
     revalidatePath("/contacts");
+    revalidatePath("/contacts/import");
     return { inserted, updated };
   }
 
@@ -113,6 +151,47 @@ export default async function ImportContactsPage() {
             with a header row works here, so a spreadsheet you keep yourself is
             fine too.
           </p>
+        </div>
+
+        <div className="bg-white border border-gold/25 rounded-xl p-5 sm:p-6">
+          <h2 className="font-serif text-base text-navy mb-1">Recent imports</h2>
+          <p className="text-sm text-ink-mute mb-4">
+            Every CSV run and website pull-in, so you can see what came in and when.
+          </p>
+          {batches.length === 0 ? (
+            <p className="text-sm text-ink-mute">No imports yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-ink-mute border-b border-gold/20">
+                    <th className="py-2 pr-4 font-medium">File / source</th>
+                    <th className="py-2 pr-4 font-medium">Label</th>
+                    <th className="py-2 pr-4 font-medium text-right">Added</th>
+                    <th className="py-2 pr-4 font-medium text-right">Updated</th>
+                    <th className="py-2 pr-4 font-medium text-right">Skipped</th>
+                    <th className="py-2 font-medium text-right">When</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gold/10">
+                  {batches.map((b) => (
+                    <tr key={b.id}>
+                      <td className="py-2.5 pr-4 text-navy truncate max-w-[220px]" title={importBatchLabel(b)}>
+                        {importBatchLabel(b)}
+                      </td>
+                      <td className="py-2.5 pr-4 text-ink-soft">{b.source ?? "—"}</td>
+                      <td className="py-2.5 pr-4 text-right text-navy font-medium">{b.inserted_count}</td>
+                      <td className="py-2.5 pr-4 text-right text-ink-soft">{b.updated_count}</td>
+                      <td className="py-2.5 pr-4 text-right text-ink-soft">{b.skipped_count}</td>
+                      <td className="py-2.5 text-right text-ink-mute text-xs whitespace-nowrap">
+                        {formatDateTime(b.created_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </main>
     </>

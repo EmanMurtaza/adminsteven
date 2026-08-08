@@ -16,6 +16,8 @@ import {
   Home,
   Contact2,
   Quote,
+  Kanban,
+  Megaphone,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
@@ -25,11 +27,13 @@ const nav = [
   { label: "Buyers", href: "/inquiries/buyers", icon: Users },
   { label: "Sellers", href: "/inquiries/sellers", icon: Home },
   { label: "Contacts", href: "/contacts", icon: Contact2 },
+  { label: "Pipeline", href: "/pipeline", icon: Kanban },
   { label: "Listings", href: "/listings", icon: List },
   { label: "New Listing", href: "/listings/new", icon: PlusCircle },
   { label: "Blog", href: "/blog", icon: BookOpen },
   { label: "New Post", href: "/blog/new", icon: FilePlus },
   { label: "Testimonials", href: "/testimonials", icon: Quote },
+  { label: "Campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

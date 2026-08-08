@@ -38,7 +38,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/api/listings") ||
-    pathname.startsWith("/api/blog");
+    pathname.startsWith("/api/blog") ||
+    pathname.startsWith("/api/campaigns");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

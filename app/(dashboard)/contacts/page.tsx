@@ -150,7 +150,15 @@ export default async function ContactsPage({
       });
 
     if (rows.length) await supabase.from("contacts").insert(rows);
+    await supabase.from("import_batches").insert({
+      kind: "website",
+      source: "website",
+      inserted_count: rows.length,
+      updated_count: 0,
+      skipped_count: 0,
+    });
     revalidatePath("/contacts");
+    revalidatePath("/contacts/import");
   }
 
   const qs = (over: Record<string, string | undefined>) => {

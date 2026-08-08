@@ -1,120 +1,191 @@
 import Header from "@/components/layout/Header";
+import AnalyticsCharts from "@/components/analytics/AnalyticsCharts";
+import AddContactModal, { NewContactInput } from "@/components/dashboard/AddContactModal";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
-import { countListings } from "@/lib/listings";
+import { getPipelineAnalytics, getInquiryAnalytics } from "@/lib/analytics";
+import { getListingAnalytics, listListings } from "@/lib/listings";
+import { formatPrice, percentChange } from "@/lib/format";
+import { Users, UserPlus, Bell, Target, Building2, DollarSign } from "lucide-react";
+import type { ReactNode } from "react";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+const RECENT_LISTINGS = 6;
+
+function Chip({
+  icon,
+  label,
+  value,
+  deltaPct,
+  href,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string | number;
+  deltaPct?: number | null;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/[0.1] hover:border-gold/40 transition-colors min-w-0"
+    >
+      <div className="w-7 h-7 rounded-md bg-gold/15 text-gold flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[9px] uppercase tracking-[0.12em] text-cream/50 truncate">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="font-serif text-base text-cream font-semibold leading-none">{value}</p>
+          {deltaPct != null && (
+            <span
+              className={`text-[10px] font-medium ${deltaPct >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+            >
+              {deltaPct >= 0 ? "+" : ""}
+              {Math.round(deltaPct)}%
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export default async function DashboardPage() {
-  // Auth still gated by Supabase; listing counts now come from MongoDB.
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
 
   const [
-    total,
-    published,
-    drafts,
-    { count: totalPosts },
-    { count: publishedPosts },
-    { count: newInquiries },
+    pipeline,
+    inquiries,
+    listingStats,
+    { data: recentListings },
   ] = await Promise.all([
-    countListings(),
-    countListings({ status: "published" }),
-    countListings({ status: "draft" }),
-    supabase.from("blogs").select("*", { count: "exact", head: true }),
-    supabase.from("blogs").select("*", { count: "exact", head: true }).eq("status", "published"),
-    supabase.from("contact_submissions").select("*", { count: "exact", head: true }).eq("is_read", false),
+    getPipelineAnalytics(supabase),
+    getInquiryAnalytics(supabase),
+    getListingAnalytics(),
+    listListings({ limit: RECENT_LISTINGS }),
   ]);
 
-  const stats = [
-    { label: "New Enquiries", value: newInquiries ?? 0, href: "/inquiries/buyers" },
-    { label: "Total Listings", value: total },
-    { label: "Published Listings", value: published },
-    { label: "Draft Listings", value: drafts },
-    { label: "Blog Posts", value: totalPosts ?? 0 },
-    { label: "Published Posts", value: publishedPosts ?? 0 },
-  ];
+  async function createContact(input: NewContactInput): Promise<{ error?: string }> {
+    "use server";
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+
+    const email = input.email.trim().toLowerCase();
+    const phone = input.phone.trim();
+    if (!email && !phone) return { error: "Add an email or phone number." };
+
+    const { error } = await supabase.from("contacts").insert({
+      first_name: input.first_name.trim() || null,
+      last_name: input.last_name.trim() || null,
+      email: email || null,
+      phone: phone || null,
+      lead_type: input.lead_type,
+      stage: input.stage,
+      source: input.source.trim() || "manual",
+      notes: input.notes.trim() || null,
+    });
+
+    if (error) {
+      // contacts_email_unique — a friendlier message than the raw constraint name.
+      if (error.code === "23505") return { error: "A contact with that email already exists." };
+      return { error: error.message };
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/contacts");
+    revalidatePath("/pipeline");
+    return {};
+  }
+
+  const publishedListings = listingStats.byStatus.find((s) => s.status === "published")?.count ?? 0;
+  const conversionLabel =
+    pipeline.conversionRate === null ? "—" : `${Math.round(pipeline.conversionRate * 100)}%`;
+  const leadsDelta = percentChange(pipeline.newLast7Days, pipeline.newPrevWeek);
+  const enquiriesDelta = percentChange(inquiries.last7Days, inquiries.prevWeek);
 
   return (
     <>
       <Header title="Dashboard" />
-      <main className="p-4 sm:p-8 space-y-6 sm:space-y-8">
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5">
-          {stats.map(({ label, value, href }) => {
-            const card = (
-              <>
-                <p className="text-[10px] sm:text-xs uppercase tracking-[0.18em] text-ink-mute">
-                  {label}
-                </p>
-                <p className="font-serif text-3xl sm:text-4xl font-semibold text-navy mt-3">
-                  {value}
-                </p>
-                <div className="h-px w-8 bg-gold mt-4" />
-              </>
-            );
-            const shell =
-              "block bg-white border rounded-xl p-5 sm:p-6 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)] hover:shadow-[0_8px_30px_-12px_rgba(14,27,48,0.18)] transition-shadow";
-            // An unread count is only useful if it takes you to the unread list.
-            return href ? (
-              <Link
-                key={label}
-                href={href}
-                className={`${shell} ${value > 0 ? "border-gold" : "border-gold/25"}`}
-              >
-                {card}
-              </Link>
-            ) : (
-              <div key={label} className={`${shell} border-gold/25`}>
-                {card}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Quick actions */}
-        <div className="bg-white border border-gold/25 rounded-xl p-5 sm:p-6">
-          <h2 className="font-serif text-lg sm:text-xl text-navy mb-1">
-            Quick Actions
-          </h2>
-          <p className="text-sm text-ink-mute mb-5">
-            Manage your properties and content.
-          </p>
-          <div className="flex flex-wrap gap-3">
+      <main className="p-4 sm:p-6 space-y-4">
+        {/* Title row */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-serif text-xl sm:text-2xl text-navy">Business Snapshot</h1>
+            <p className="text-xs text-ink-mute mt-0.5">
+              Live pipeline, listings &amp; enquiry performance.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <AddContactModal onCreate={createContact} />
             <Link
               href="/listings/new"
-              className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
+              className="bg-navy hover:bg-navy-500 text-cream px-3.5 py-2 rounded-md text-xs font-medium transition-colors"
             >
-              <span>+ New Listing</span>
-              <span className="text-gold">›</span>
+              + Listing
             </Link>
             <Link
-              href="/blog/new"
-              className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
+              href="/contacts/import"
+              className="border border-navy/30 text-navy hover:bg-navy hover:text-cream px-3.5 py-2 rounded-md text-xs font-medium transition-colors"
             >
-              <span>+ New Post</span>
-              <span className="text-gold">›</span>
-            </Link>
-            <Link
-              href="/listings"
-              className="border border-navy/30 text-navy hover:bg-navy hover:text-cream hover:border-navy px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
-            >
-              All Listings
-            </Link>
-            <Link
-              href="/blog"
-              className="border border-navy/30 text-navy hover:bg-navy hover:text-cream hover:border-navy px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
-            >
-              All Posts
+              Import Leads
             </Link>
           </div>
         </div>
 
-        {/* Tagline strip */}
-        <div className="text-center pt-2 sm:pt-4">
-          <p className="font-serif italic text-ink-mute text-xs sm:text-sm px-4">
-            “DFW Real Estate · Luxury, REO &amp; Investor — Since 2006”
-          </p>
+        {/* Dark KPI strip */}
+        <div className="bg-navy rounded-xl p-3 sm:p-3.5 shadow-[0_10px_30px_-14px_rgba(6,16,28,0.5)]">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <Chip
+              icon={<Users size={14} />}
+              label="Total Leads"
+              value={pipeline.totalContacts}
+              href="/pipeline"
+            />
+            <Chip
+              icon={<UserPlus size={14} />}
+              label="New (7d)"
+              value={pipeline.newLast7Days}
+              deltaPct={leadsDelta}
+              href="/pipeline"
+            />
+            <Chip
+              icon={<Bell size={14} />}
+              label="Enquiries"
+              value={inquiries.unread}
+              deltaPct={enquiriesDelta}
+              href="/inquiries/buyers"
+            />
+            <Chip
+              icon={<Target size={14} />}
+              label="Win Rate"
+              value={conversionLabel}
+              href="/pipeline"
+            />
+            <Chip
+              icon={<Building2 size={14} />}
+              label="Listings"
+              value={`${publishedListings}/${listingStats.totalCount}`}
+              href="/listings"
+            />
+            <Chip
+              icon={<DollarSign size={14} />}
+              label="Avg Price"
+              value={formatPrice(listingStats.avgPrice)}
+              href="/listings"
+            />
+          </div>
         </div>
+
+        {/* Dense panel grid */}
+        <AnalyticsCharts
+          pipeline={pipeline}
+          inquiries={inquiries}
+          listings={listingStats}
+          recentListings={recentListings ?? []}
+        />
       </main>
     </>
   );

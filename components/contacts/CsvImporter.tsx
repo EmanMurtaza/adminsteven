@@ -14,9 +14,12 @@ import {
 } from "@/lib/contacts";
 
 interface Props {
-  onImport: (
-    drafts: ContactDraft[]
-  ) => Promise<{ inserted?: number; updated?: number; error?: string }>;
+  onImport: (input: {
+    drafts: ContactDraft[];
+    fileName: string;
+    source: string;
+    skippedCount: number;
+  }) => Promise<{ inserted?: number; updated?: number; error?: string }>;
 }
 
 const selectClass =
@@ -82,7 +85,12 @@ export default function CsvImporter({ onImport }: Props) {
     if (!drafts.length) return;
     setBusy(true);
     setError(null);
-    const result = await onImport(drafts);
+    const result = await onImport({
+      drafts,
+      fileName: fileName ?? "",
+      source,
+      skippedCount: preview.skipped.length,
+    });
     setBusy(false);
 
     if (result.error) {
