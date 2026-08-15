@@ -19,13 +19,16 @@ export const CAMPAIGN_FREQUENCIES: { value: CampaignFrequency; label: string }[]
   { value: "every_visit", label: "Every visit" },
 ];
 
+export type CampaignMediaType = "image" | "video";
+
 export interface Campaign {
   id: string;
   /** Internal name — never shown to visitors. */
   title: string;
   headline: string;
   body: string | null;
-  image_url: string | null;
+  media_url: string | null;
+  media_type: CampaignMediaType;
   cta_text: string | null;
   cta_url: string | null;
   status: CampaignStatus;
@@ -43,7 +46,8 @@ export interface CampaignInsert {
   title: string;
   headline: string;
   body?: string | null;
-  image_url?: string | null;
+  media_url?: string | null;
+  media_type: CampaignMediaType;
   cta_text?: string | null;
   cta_url?: string | null;
   status: CampaignStatus;

@@ -2,6 +2,7 @@ import Header from "@/components/layout/Header";
 import BlogTable from "@/components/blog/BlogTable";
 import Pagination from "@/components/ui/Pagination";
 import { FilterBar, SearchField, SelectField } from "@/components/ui/FilterBar";
+import AddContactModal, { NewContactInput } from "@/components/contacts/AddContactModal";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { BLOG_CATEGORIES, CONTENT_STATUSES } from "@/lib/types";
 import Link from "next/link";
@@ -78,6 +79,41 @@ export default async function BlogPage({
     return { error: error?.message };
   }
 
+  // Same quick-add action used on Dashboard/Contacts — a reader who emails
+  // about a post shouldn't need a trip to Contacts to get logged as a lead.
+  async function createContact(input: NewContactInput): Promise<{ error?: string }> {
+    "use server";
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+
+    const email = input.email.trim().toLowerCase();
+    const phone = input.phone.trim();
+    if (!email && !phone) return { error: "Add an email or phone number." };
+
+    const { error } = await supabase.from("contacts").insert({
+      first_name: input.first_name.trim() || null,
+      last_name: input.last_name.trim() || null,
+      email: email || null,
+      phone: phone || null,
+      lead_type: input.lead_type,
+      stage: input.stage,
+      source: input.source.trim() || "manual",
+      notes: input.notes.trim() || null,
+    });
+
+    if (error) {
+      // contacts_email_unique — a friendlier message than the raw constraint name.
+      if (error.code === "23505") return { error: "A contact with that email already exists." };
+      return { error: error.message };
+    }
+
+    revalidatePath("/blog");
+    revalidatePath("/contacts");
+    revalidatePath("/dashboard");
+    revalidatePath("/pipeline");
+    return {};
+  }
+
   return (
     <>
       <Header title="Blog" />
@@ -102,13 +138,16 @@ export default async function BlogPage({
             />
           </FilterBar>
 
-          <Link
-            href="/blog/new"
-            className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2 shrink-0"
-          >
-            <span>+ New Post</span>
-            <span className="text-gold">›</span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <AddContactModal onCreate={createContact} />
+            <Link
+              href="/blog/new"
+              className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
+            >
+              <span>+ New Post</span>
+              <span className="text-gold">›</span>
+            </Link>
+          </div>
         </div>
 
         <p className="text-sm text-ink-mute">

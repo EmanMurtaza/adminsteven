@@ -11,7 +11,8 @@ create table if not exists public.campaigns (
   title                  text not null,   -- internal name, never shown to visitors
   headline               text not null,   -- shown in the popup
   body                   text,
-  image_url              text,
+  media_url              text,
+  media_type             text not null default 'image',   -- 'image' | 'video'
   cta_text               text,
   cta_url                text,
 
@@ -27,6 +28,15 @@ create table if not exists public.campaigns (
   updated_at             timestamptz not null default now()
 );
 
+-- Upgrade path for anyone who already ran an earlier version of this file
+-- (back when the column was `image_url` with no media type).
+do $$ begin
+  alter table public.campaigns rename column image_url to media_url;
+exception when undefined_column then null;
+end $$;
+
+alter table public.campaigns add column if not exists media_type text not null default 'image';
+
 do $$ begin
   alter table public.campaigns add constraint campaigns_status_check
     check (status in ('draft', 'published', 'archived'));
@@ -36,6 +46,12 @@ end $$;
 do $$ begin
   alter table public.campaigns add constraint campaigns_frequency_check
     check (frequency in ('once_per_session', 'once_per_visitor', 'every_visit'));
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  alter table public.campaigns add constraint campaigns_media_type_check
+    check (media_type in ('image', 'video'));
 exception when duplicate_object then null;
 end $$;
 

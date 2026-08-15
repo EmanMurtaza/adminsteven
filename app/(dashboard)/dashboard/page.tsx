@@ -1,6 +1,6 @@
 import Header from "@/components/layout/Header";
 import AnalyticsCharts from "@/components/analytics/AnalyticsCharts";
-import AddContactModal, { NewContactInput } from "@/components/dashboard/AddContactModal";
+import AddContactModal, { NewContactInput } from "@/components/contacts/AddContactModal";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { getPipelineAnalytics, getInquiryAnalytics } from "@/lib/analytics";
 import { getListingAnalytics, listListings } from "@/lib/listings";

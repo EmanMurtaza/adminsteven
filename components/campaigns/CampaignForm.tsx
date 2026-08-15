@@ -2,11 +2,12 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImageIcon, X } from "lucide-react";
+import { ImageIcon, Video, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Campaign,
   CampaignInsert,
+  CampaignMediaType,
   CAMPAIGN_STATUSES,
   CAMPAIGN_FREQUENCIES,
 } from "@/lib/campaigns";
@@ -21,10 +22,10 @@ const inputClass =
 
 const labelClass = "block text-xs font-medium uppercase tracking-wider text-ink-soft mb-2";
 
-// Must match the bucket's file_size_limit in supabase/create_property_images_bucket.sql.
-const MAX_IMAGE_MB = 5;
-const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;
-const IMAGE_BUCKET = "property-images";
+// Must match the bucket's file_size_limit in supabase/create_campaign_media_bucket.sql.
+const MAX_MEDIA_MB = 25;
+const MAX_MEDIA_BYTES = MAX_MEDIA_MB * 1024 * 1024;
+const MEDIA_BUCKET = "campaign-media";
 
 function toLocalInput(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -40,15 +41,16 @@ function fromLocalInput(value: string): string | null {
 export default function CampaignForm({ initialData, onSubmit }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [imageUploading, setImageUploading] = useState(false);
+  const [mediaUploading, setMediaUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<CampaignInsert>({
     title: initialData?.title ?? "",
     headline: initialData?.headline ?? "",
     body: initialData?.body ?? "",
-    image_url: initialData?.image_url ?? null,
+    media_url: initialData?.media_url ?? null,
+    media_type: initialData?.media_type ?? "image",
     cta_text: initialData?.cta_text ?? "",
     cta_url: initialData?.cta_url ?? "",
     status: initialData?.status ?? "draft",
@@ -62,32 +64,35 @@ export default function CampaignForm({ initialData, onSubmit }: Props) {
   const set = <K extends keyof CampaignInsert>(key: K, value: CampaignInsert[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleMediaUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
 
-    if (file.size > MAX_IMAGE_BYTES) {
-      setError(`That image is over ${MAX_IMAGE_MB} MB — pick a smaller one.`);
+    const mediaType: CampaignMediaType = file.type.startsWith("video/") ? "video" : "image";
+
+    if (file.size > MAX_MEDIA_BYTES) {
+      setError(`That file is over ${MAX_MEDIA_MB} MB — pick a smaller one.`);
       e.target.value = "";
       return;
     }
 
-    setImageUploading(true);
+    setMediaUploading(true);
     const supabase = createClient();
-    const ext = file.name.split(".").pop() ?? "jpg";
+    const ext = file.name.split(".").pop() ?? (mediaType === "video" ? "mp4" : "jpg");
     const path = `campaigns/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const { data, error: uploadError } = await supabase.storage
-      .from(IMAGE_BUCKET)
+      .from(MEDIA_BUCKET)
       .upload(path, file);
 
     if (uploadError) {
-      setError("Image upload failed: " + uploadError.message);
+      setError("Upload failed: " + uploadError.message);
     } else if (data) {
-      const { data: urlData } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(data.path);
-      set("image_url", urlData.publicUrl);
+      const { data: urlData } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(data.path);
+      set("media_url", urlData.publicUrl);
+      set("media_type", mediaType);
     }
-    setImageUploading(false);
+    setMediaUploading(false);
     e.target.value = "";
   }
 
@@ -167,15 +172,24 @@ export default function CampaignForm({ initialData, onSubmit }: Props) {
         </div>
 
         <div>
-          <label className={labelClass}>Image</label>
-          {form.image_url ? (
+          <label className={labelClass}>Photo or video</label>
+          {form.media_url ? (
             <div className="relative w-full max-w-sm rounded-lg overflow-hidden border border-gold/25">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={form.image_url} alt="" className="w-full h-40 object-cover" />
+              {form.media_type === "video" ? (
+                <video
+                  src={form.media_url}
+                  className="w-full h-40 object-cover bg-navy"
+                  controls
+                  muted
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={form.media_url} alt="" className="w-full h-40 object-cover" />
+              )}
               <button
                 type="button"
-                onClick={() => set("image_url", null)}
-                aria-label="Remove image"
+                onClick={() => set("media_url", null)}
+                aria-label="Remove media"
                 className="absolute top-2 right-2 bg-navy/80 hover:bg-burgundy text-cream rounded-full p-1.5 transition-colors"
               >
                 <X size={14} />
@@ -184,22 +198,25 @@ export default function CampaignForm({ initialData, onSubmit }: Props) {
           ) : (
             <button
               type="button"
-              onClick={() => imageInputRef.current?.click()}
-              disabled={imageUploading}
+              onClick={() => mediaInputRef.current?.click()}
+              disabled={mediaUploading}
               className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gold/40 rounded-xl px-6 py-8 w-full max-w-sm hover:border-gold hover:bg-gold/5 transition-colors disabled:opacity-50"
             >
-              <ImageIcon size={22} className="text-gold-dark" />
+              <div className="flex items-center gap-2 text-gold-dark">
+                <ImageIcon size={20} />
+                <Video size={20} />
+              </div>
               <span className="text-xs text-navy font-medium">
-                {imageUploading ? "Uploading…" : "Click to upload"}
+                {mediaUploading ? "Uploading…" : "Click to upload a photo or video"}
               </span>
-              <span className="text-[11px] text-ink-mute">Optional — up to {MAX_IMAGE_MB} MB</span>
+              <span className="text-[11px] text-ink-mute">Optional — up to {MAX_MEDIA_MB} MB</span>
             </button>
           )}
           <input
-            ref={imageInputRef}
+            ref={mediaInputRef}
             type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
+            accept="image/*,video/*"
+            onChange={handleMediaUpload}
             className="hidden"
           />
         </div>
@@ -346,7 +363,7 @@ export default function CampaignForm({ initialData, onSubmit }: Props) {
       <div className="flex flex-wrap gap-3">
         <button
           type="submit"
-          disabled={loading || imageUploading}
+          disabled={loading || mediaUploading}
           className="bg-navy hover:bg-navy-500 disabled:opacity-50 text-cream px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
         >
           {loading ? "Saving…" : "Save campaign"}

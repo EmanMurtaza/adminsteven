@@ -1,6 +1,6 @@
 import Header from "@/components/layout/Header";
 import ContactsTable from "@/components/contacts/ContactsTable";
-import AddContactModal, { NewContactInput } from "@/components/dashboard/AddContactModal";
+import AddContactModal, { NewContactInput } from "@/components/contacts/AddContactModal";
 import Pagination from "@/components/ui/Pagination";
 import {
   FilterBar,
