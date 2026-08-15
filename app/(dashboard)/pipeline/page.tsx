@@ -1,5 +1,12 @@
 import Header from "@/components/layout/Header";
 import PipelineBoard from "@/components/pipeline/PipelineBoard";
+import {
+  FilterBar,
+  FilterTabs,
+  SearchField,
+  SelectField,
+  queryString,
+} from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { Contact, Stage } from "@/lib/contacts";
 import Link from "next/link";
@@ -20,8 +27,22 @@ const FILTERS = [
 
 type FilterKey = (typeof FILTERS)[number]["key"];
 
+// Stage is the board itself, so it is not offered here — what is useful on top
+// of the columns is who is overdue and who is going cold.
+const FOLLOW_UPS = [
+  { value: "due", label: "Follow-up due" },
+  { value: "upcoming", label: "Follow-up scheduled" },
+  { value: "none", label: "No follow-up set" },
+];
+
 function str(v: string | string[] | undefined): string | undefined {
   return typeof v === "string" && v ? v : undefined;
+}
+
+function todayISO(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(
+    new Date()
+  );
 }
 
 export default async function PipelinePage({
@@ -37,6 +58,13 @@ export default async function PipelinePage({
   const filter: FilterKey = FILTERS.some((f) => f.key === rawFilter)
     ? (rawFilter as FilterKey)
     : "all";
+  const followUp = FOLLOW_UPS.some((f) => f.value === str(params.follow))
+    ? str(params.follow)
+    : undefined;
+  const search = str(params.q)?.trim();
+
+  const isFiltered = Boolean(followUp || search);
+  const today = todayISO();
 
   let query = supabase
     .from("contacts")
@@ -47,6 +75,17 @@ export default async function PipelinePage({
   if (filter === "buyer") query = query.or("lead_type.eq.buyer,lead_type.eq.both");
   else if (filter === "seller") query = query.or("lead_type.eq.seller,lead_type.eq.both");
   else if (filter === "investor") query = query.eq("lead_type", "investor");
+
+  if (followUp === "due") query = query.lte("next_follow_up", today);
+  else if (followUp === "upcoming") query = query.gt("next_follow_up", today);
+  else if (followUp === "none") query = query.is("next_follow_up", null);
+
+  if (search) {
+    const like = `%${search.replace(/[,()]/g, " ")}%`;
+    query = query.or(
+      `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`
+    );
+  }
 
   const { data, error } = await query;
 
@@ -91,21 +130,17 @@ export default async function PipelinePage({
       <Header title="Pipeline" />
       <main className="p-4 sm:p-8 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {FILTERS.map((f) => (
-              <Link
-                key={f.key}
-                href={f.key === "all" ? "/pipeline" : `/pipeline?type=${f.key}`}
-                className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                  f.key === filter
-                    ? "bg-navy text-cream border-navy"
-                    : "bg-white text-ink-soft border-gold/30 hover:border-gold hover:text-navy"
-                }`}
-              >
-                {f.label}
-              </Link>
-            ))}
-          </div>
+          <FilterTabs
+            tabs={FILTERS}
+            active={filter}
+            href={(key) =>
+              queryString("/pipeline", {
+                type: key === "all" ? undefined : key,
+                follow: followUp,
+                q: search,
+              })
+            }
+          />
           <p className="text-sm text-ink-mute">
             <span className="font-serif text-navy text-base">{contacts.length}</span>{" "}
             {contacts.length === 1 ? "lead" : "leads"} on the board
@@ -113,7 +148,44 @@ export default async function PipelinePage({
           </p>
         </div>
 
-        <PipelineBoard key={filter} contacts={contacts} onMove={moveContactStage} />
+        <FilterBar
+          action="/pipeline"
+          isFiltered={isFiltered}
+          hidden={{ type: filter === "all" ? undefined : filter }}
+        >
+          <SearchField
+            defaultValue={search}
+            placeholder="Search name, email or phone…"
+          />
+          <SelectField
+            name="follow"
+            value={followUp}
+            anyLabel="Any follow-up"
+            options={FOLLOW_UPS}
+          />
+        </FilterBar>
+
+        {contacts.length === 0 && isFiltered ? (
+          <div className="bg-white border border-gold/30 rounded-xl p-8 text-center">
+            <p className="text-ink-soft mb-3">No leads match these filters.</p>
+            <Link
+              href={queryString("/pipeline", {
+                type: filter === "all" ? undefined : filter,
+              })}
+              className="text-navy underline underline-offset-4 hover:text-gold text-sm"
+            >
+              Clear filters
+            </Link>
+          </div>
+        ) : (
+          // Re-key on the filters so the board's local drag state resets when
+          // the underlying set of cards changes.
+          <PipelineBoard
+            key={`${filter}:${followUp ?? ""}:${search ?? ""}`}
+            contacts={contacts}
+            onMove={moveContactStage}
+          />
+        )}
       </main>
     </>
   );

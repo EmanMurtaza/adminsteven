@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createListing, listListings } from "@/lib/listings";
 import { withCors } from "@/lib/cors";
-import { Listing, ListingStatus } from "@/lib/types";
+import { Listing, ListingStatus, SALES_CHANNELS, SalesChannel } from "@/lib/types";
 
 const cors = (res: NextResponse, req: NextRequest) => withCors(res, req, "GET, POST, OPTIONS");
 
@@ -26,11 +26,18 @@ export async function GET(request: NextRequest) {
   const status = (searchParams.get("status") ?? "published") as ListingStatus;
   const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
   const offset = Number(searchParams.get("offset") ?? 0);
+  // Sub-type: on_market | off_market | wholesale. Unrecognised values are
+  // ignored rather than returning nothing, so a stale caller still gets results.
+  const rawChannel = searchParams.get("channel");
+  const salesChannel = SALES_CHANNELS.some((c) => c.value === rawChannel)
+    ? (rawChannel as SalesChannel)
+    : null;
 
   try {
     const { data, count } = await listListings({
       status,
       propertyType,
+      salesChannel,
       featured: featured === "true",
       limit,
       offset,

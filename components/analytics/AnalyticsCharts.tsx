@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/types";
+import { SALES_CHANNELS } from "@/lib/types";
 import {
   ResponsiveContainer,
   BarChart,
@@ -204,6 +205,13 @@ export default function AnalyticsCharts({ pipeline, inquiries, listings, recentL
     count: p.count,
   }));
 
+  // Sub-type split. Ordered by SALES_CHANNELS rather than by count so the bars
+  // stay in the same place as the mix shifts.
+  const channelData = SALES_CHANNELS.map((c) => ({
+    name: c.label,
+    count: listings.byChannel.find((b) => b.channel === c.value)?.count ?? 0,
+  }));
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {/* Enquiries trend */}
@@ -355,6 +363,30 @@ export default function AnalyticsCharts({ pipeline, inquiries, listings, recentL
               <YAxis allowDecimals={false} tick={tickStyle} width={22} />
               <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(212,168,75,0.08)" }} />
               <Bar dataKey="count" fill="url(#typeFill)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Listings by sub-type */}
+      <div className={cardClass}>
+        <PanelTitle>By sub-type</PanelTitle>
+        {listings.totalCount === 0 ? (
+          <EmptyNote>No listings yet.</EmptyNote>
+        ) : (
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={channelData} margin={{ left: -20, right: 5, top: 5 }}>
+              <defs>
+                <linearGradient id="channelFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={GOLD_LIGHT} />
+                  <stop offset="100%" stopColor="#8c2f39" />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0ddb0" vertical={false} />
+              <XAxis dataKey="name" tick={tickStyle} />
+              <YAxis allowDecimals={false} tick={tickStyle} width={22} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(212,168,75,0.08)" }} />
+              <Bar dataKey="count" fill="url(#channelFill)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}

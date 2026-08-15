@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Listing, PROPERTY_TYPES } from "@/lib/types";
+import { Listing, PROPERTY_TYPES, salesChannelLabel } from "@/lib/types";
 import { formatDate, formatPrice } from "@/lib/format";
 import { Pencil, Trash2, Eye } from "lucide-react";
 import { useState } from "react";
@@ -19,6 +19,27 @@ const statusStyles: Record<string, string> = {
 
 const typeLabel = (value: string) =>
   PROPERTY_TYPES.find((t) => t.value === value)?.label ?? value;
+
+// Off-market and wholesale are the ones worth spotting at a glance; on-market
+// is the norm and stays unstyled so the badges mean something.
+const channelStyles: Record<string, string> = {
+  off_market: "bg-navy/10 text-navy border border-navy/20",
+  wholesale: "bg-burgundy/10 text-burgundy border border-burgundy/25",
+  on_market: "bg-cream-200 text-ink-soft border border-ink-mute/20",
+};
+
+function ChannelBadge({ channel }: { channel: string | null | undefined }) {
+  const key = channel ?? "on_market";
+  return (
+    <span
+      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${
+        channelStyles[key] ?? channelStyles.on_market
+      }`}
+    >
+      {salesChannelLabel(key)}
+    </span>
+  );
+}
 
 export default function ListingsTable({ listings, onDelete }: ListingsTableProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -65,7 +86,8 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
                 <p className="font-serif text-lg text-navy leading-tight truncate">
                   {listing.title}
                 </p>
-                <p className="text-xs text-ink-mute mt-1">
+                <p className="text-xs text-ink-mute mt-1 flex items-center gap-1.5 flex-wrap">
+                  <ChannelBadge channel={listing.sales_channel} />
                   {typeLabel(listing.property_type)}
                   {listing.city ? ` · ${listing.city}` : ""}
                 </p>
@@ -124,6 +146,7 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
             <tr>
               <th className="px-5 py-4 text-left font-semibold">Title</th>
               <th className="px-5 py-4 text-left font-semibold">Type</th>
+              <th className="px-5 py-4 text-left font-semibold">Sub-type</th>
               <th className="px-5 py-4 text-left font-semibold">City</th>
               <th className="px-5 py-4 text-left font-semibold">Price</th>
               <th className="px-5 py-4 text-left font-semibold">Status</th>
@@ -139,6 +162,9 @@ export default function ListingsTable({ listings, onDelete }: ListingsTableProps
               >
                 <td className="px-5 py-4 font-medium text-navy">{listing.title}</td>
                 <td className="px-5 py-4 text-ink-soft">{typeLabel(listing.property_type)}</td>
+                <td className="px-5 py-4">
+                  <ChannelBadge channel={listing.sales_channel} />
+                </td>
                 <td className="px-5 py-4 text-ink-soft">{listing.city ?? "—"}</td>
                 <td className="px-5 py-4 text-ink-soft font-medium">
                   {formatPrice(listing.price)}

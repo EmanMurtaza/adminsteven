@@ -25,7 +25,9 @@ column-aware parse instead.
 to `mongodb+srv://`. All scripts run with `node --env-file=.env.local scripts/<name>.mjs`.
 
 ## The Listing schema (target shape — see `lib/types.ts`)
-Key fields: `title`, `slug` (unique), `description`, `property_type` (`"luxury" | "land" | "off_market"`),
+Key fields: `title`, `slug` (unique), `description`, `property_type` (`"luxury" | "land" | "dorms"`),
+`sales_channel` (`"on_market" | "off_market" | "wholesale"` — the sub-type; `is_off_market` is the
+legacy boolean view of it and is kept in sync automatically),
 `status` (`"draft" | "published" | "archived"`), `is_featured`, `address`, `city`, `state` (default "TX"),
 `zip_code`, `neighborhood`, `county`, `price` (number), `bedrooms`, `bathrooms`, `square_footage`,
 `lot_size_sqft`, `lot_size_acres`, `year_built`, `images` (string[]), `mls_number`, `meta` (jsonb),

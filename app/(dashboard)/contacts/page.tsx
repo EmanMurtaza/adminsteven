@@ -1,8 +1,16 @@
 import Header from "@/components/layout/Header";
 import ContactsTable from "@/components/contacts/ContactsTable";
+import AddContactModal, { NewContactInput } from "@/components/dashboard/AddContactModal";
 import Pagination from "@/components/ui/Pagination";
+import {
+  FilterBar,
+  FilterTabs,
+  SearchField,
+  SelectField,
+  queryString,
+} from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
-import { Contact, STAGES } from "@/lib/contacts";
+import { Contact, LEAD_TYPES, STAGES } from "@/lib/contacts";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -17,6 +25,13 @@ const VIEWS = [
 ] as const;
 
 type ViewKey = (typeof VIEWS)[number]["key"];
+
+// The three ways a contact gets here — see the import actions below.
+const SOURCES = [
+  { value: "website", label: "Website form" },
+  { value: "csv", label: "CSV import" },
+  { value: "manual", label: "Added by hand" },
+];
 
 function todayISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
@@ -39,11 +54,22 @@ export default async function ContactsPage({
   const params = await searchParams;
   const rawView = str(params.view);
   const view: ViewKey = VIEWS.some((v) => v.key === rawView) ? (rawView as ViewKey) : "all";
-  const stage = str(params.stage);
+  const stage = STAGES.some((s) => s.value === str(params.stage))
+    ? str(params.stage)
+    : undefined;
+  // The tabs cover buyers and sellers; this reaches the rest (investor, both).
+  const leadType = LEAD_TYPES.some((t) => t.value === str(params.type))
+    ? str(params.type)
+    : undefined;
+  const source = SOURCES.some((s) => s.value === str(params.source))
+    ? str(params.source)
+    : undefined;
   const search = str(params.q)?.trim();
   const page = Math.max(1, Number(str(params.page) ?? "1") || 1);
   const from = (page - 1) * PAGE_SIZE;
   const today = todayISO();
+
+  const isFiltered = Boolean(stage || leadType || source || search);
 
   let query = supabase
     .from("contacts")
@@ -57,8 +83,12 @@ export default async function ContactsPage({
   else if (view === "seller") query = query.or("lead_type.eq.seller,lead_type.eq.both");
 
   if (stage) query = query.eq("stage", stage);
+  if (leadType) query = query.eq("lead_type", leadType);
+  if (source) query = query.eq("source", source);
   if (search) {
-    const like = `%${search}%`;
+    // Strip the delimiters PostgREST uses inside or() so a comma or bracket in
+    // the search box cannot split into bogus conditions.
+    const like = `%${search.replace(/[,()]/g, " ")}%`;
     query = query.or(
       `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`
     );
@@ -102,6 +132,40 @@ export default async function ContactsPage({
     return { error: error?.message };
   }
 
+  // Typed in by hand — the third way a lead arrives, alongside the CSV import
+  // and the website forms. Same action the dashboard uses.
+  async function createContact(input: NewContactInput): Promise<{ error?: string }> {
+    "use server";
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+
+    const email = input.email.trim().toLowerCase();
+    const phone = input.phone.trim();
+    if (!email && !phone) return { error: "Add an email or phone number." };
+
+    const { error } = await supabase.from("contacts").insert({
+      first_name: input.first_name.trim() || null,
+      last_name: input.last_name.trim() || null,
+      email: email || null,
+      phone: phone || null,
+      lead_type: input.lead_type,
+      stage: input.stage,
+      source: input.source.trim() || "manual",
+      notes: input.notes.trim() || null,
+    });
+
+    if (error) {
+      // contacts_email_unique — a friendlier message than the raw constraint name.
+      if (error.code === "23505") return { error: "A contact with that email already exists." };
+      return { error: error.message };
+    }
+
+    revalidatePath("/contacts");
+    revalidatePath("/dashboard");
+    revalidatePath("/pipeline");
+    return {};
+  }
+
   async function deleteContact(id: string) {
     "use server";
     const supabase = await createAuthedServiceClient();
@@ -122,7 +186,7 @@ export default async function ContactsPage({
     const [{ data: submissions }, { data: existing }] = await Promise.all([
       supabase
         .from("contact_submissions")
-        .select("id, name, email, phone, source, created_at")
+        .select("id, name, email, phone, source, message, created_at")
         .order("created_at", { ascending: false }),
       supabase.from("contacts").select("submission_id, email"),
     ]);
@@ -137,12 +201,17 @@ export default async function ContactsPage({
       .filter((s) => !s.email || !doneEmails.has(s.email.toLowerCase()))
       .map((s) => {
         const parts = (s.name ?? "").trim().split(/\s+/);
+        // `source` is always buyer or seller — the enquiry lists filter on
+        // exactly those. Someone doing both sides of a trade says so inside
+        // the form, so that answer is what decides the lead type.
+        const bothSides = /^I am a:\s*Both\s*$/m.test(s.message ?? "");
+        const side = s.source === "buyer" || s.source === "seller" ? s.source : "unknown";
         return {
           first_name: parts[0] || null,
           last_name: parts.slice(1).join(" ") || null,
           email: s.email?.toLowerCase() || null,
           phone: s.phone || null,
-          lead_type: s.source === "buyer" || s.source === "seller" ? s.source : "unknown",
+          lead_type: bothSides ? "both" : side,
           stage: "new",
           source: "website",
           submission_id: s.id,
@@ -161,35 +230,29 @@ export default async function ContactsPage({
     revalidatePath("/contacts/import");
   }
 
-  const qs = (over: Record<string, string | undefined>) => {
-    const p = new URLSearchParams();
-    const merged = { view: view === "all" ? undefined : view, stage, q: search, ...over };
-    for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
-    const s = p.toString();
-    return s ? `/contacts?${s}` : "/contacts";
-  };
+  // Every filter except the one being changed rides along, so switching tabs
+  // keeps your search and dropdowns. `page` is never carried — a different
+  // filter means a different result set, so it starts at page 1.
+  const carried = { stage, type: leadType, source, q: search };
+  const qs = (over: Record<string, string | undefined>) =>
+    queryString("/contacts", {
+      view: view === "all" ? undefined : view,
+      ...carried,
+      ...over,
+    });
 
   return (
     <>
       <Header title="Contacts" />
       <main className="p-4 sm:p-8 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
+          <FilterTabs
+            tabs={VIEWS}
+            active={view}
+            href={(key) => qs({ view: key === "all" ? undefined : key })}
+          />
           <div className="flex flex-wrap items-center gap-2">
-            {VIEWS.map((v) => (
-              <Link
-                key={v.key}
-                href={qs({ view: v.key === "all" ? undefined : v.key, page: undefined })}
-                className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                  v.key === view
-                    ? "bg-navy text-cream border-navy"
-                    : "bg-white text-ink-soft border-gold/30 hover:border-gold hover:text-navy"
-                }`}
-              >
-                {v.label}
-              </Link>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
+            <AddContactModal onCreate={createContact} />
             <ImportWebsiteButton action={importFromWebsite} />
             <Link
               href="/contacts/import"
@@ -201,44 +264,71 @@ export default async function ContactsPage({
           </div>
         </div>
 
-        {/* Search + stage filter */}
-        <form className="flex flex-wrap gap-2" action="/contacts">
-          {view !== "all" && <input type="hidden" name="view" value={view} />}
-          <input
-            name="q"
-            defaultValue={search ?? ""}
+        {/* The active tab is not an input here, so it rides along hidden —
+            otherwise applying a filter would drop you back to All. */}
+        <FilterBar
+          action="/contacts"
+          isFiltered={isFiltered}
+          hidden={{ view: view === "all" ? undefined : view }}
+        >
+          <SearchField
+            defaultValue={search}
             placeholder="Search name, email or phone…"
-            className="flex-1 min-w-[200px] bg-white border border-gold/30 text-navy rounded-md px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent"
           />
-          <select
-            name="stage"
-            defaultValue={stage ?? ""}
-            className="bg-white border border-gold/30 text-navy rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
-          >
-            <option value="">Any stage</option>
-            {STAGES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="border border-navy/30 text-navy hover:bg-navy hover:text-cream px-5 py-2.5 rounded-md text-sm font-medium transition-colors"
-          >
-            Search
-          </button>
-        </form>
+          <SelectField name="stage" value={stage} anyLabel="Any stage" options={STAGES} />
+          <SelectField
+            name="type"
+            value={leadType}
+            anyLabel="Any lead type"
+            options={LEAD_TYPES}
+          />
+          <SelectField
+            name="source"
+            value={source}
+            anyLabel="Any source"
+            options={SOURCES}
+          />
+        </FilterBar>
 
+        {/* The pager itself hides on a single page, so say where you are here
+            instead — otherwise 25 of 60 rows looks like all of them. */}
         <p className="text-sm text-ink-mute">
-          <span className="font-serif text-navy text-base">{count ?? 0}</span>{" "}
-          {count === 1 ? "contact" : "contacts"}
+          {totalPages > 1 ? (
+            <>
+              Showing{" "}
+              <span className="font-serif text-navy text-base">
+                {from + 1}–{from + contacts.length}
+              </span>{" "}
+              of <span className="font-serif text-navy text-base">{count ?? 0}</span> contacts
+              <span className="text-ink-mute/70"> · page {page} of {totalPages}</span>
+            </>
+          ) : (
+            <>
+              <span className="font-serif text-navy text-base">{count ?? 0}</span>{" "}
+              {count === 1 ? "contact" : "contacts"}
+            </>
+          )}
           {view === "due" && " needing follow-up today or sooner"}
+          {isFiltered && " matching your filters"}
         </p>
 
-        <ContactsTable
-          contacts={contacts}
-          onUpdate={updateContact}
-          onDelete={deleteContact}
-        />
+        {contacts.length === 0 && isFiltered ? (
+          <div className="bg-white border border-gold/30 rounded-xl p-8 text-center">
+            <p className="text-ink-soft mb-3">No contacts match these filters.</p>
+            <Link
+              href={qs({ stage: undefined, type: undefined, source: undefined, q: undefined })}
+              className="text-navy underline underline-offset-4 hover:text-gold text-sm"
+            >
+              Clear filters
+            </Link>
+          </div>
+        ) : (
+          <ContactsTable
+            contacts={contacts}
+            onUpdate={updateContact}
+            onDelete={deleteContact}
+          />
+        )}
 
         <Pagination
           currentPage={page}
@@ -246,8 +336,7 @@ export default async function ContactsPage({
           basePath="/contacts"
           extraParams={{
             view: view === "all" ? undefined : view,
-            stage,
-            q: search,
+            ...carried,
           }}
         />
       </main>

@@ -2,7 +2,13 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Listing, ListingInsert, PROPERTY_TYPES } from "@/lib/types";
+import {
+  Listing,
+  ListingInsert,
+  PROPERTY_TYPES,
+  SALES_CHANNELS,
+  DEFAULT_SALES_CHANNEL,
+} from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { ImageIcon, X } from "lucide-react";
 
@@ -45,6 +51,7 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
     slug: initialData?.slug ?? "",
     description: initialData?.description ?? "",
     property_type: initialData?.property_type ?? "luxury",
+    sales_channel: initialData?.sales_channel ?? DEFAULT_SALES_CHANNEL,
     status: initialData?.status ?? "draft",
     is_featured: initialData?.is_featured ?? false,
     address: initialData?.address ?? "",
@@ -215,7 +222,7 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <div>
           <label className={labelClass}>Property Type *</label>
           <select
@@ -229,6 +236,27 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
               </option>
             ))}
           </select>
+        </div>
+
+        {/* The sub-category is a second axis, not a narrowing of the type above:
+            every property type can be sold through any of these channels. */}
+        <div>
+          <label className={labelClass}>Sub-category *</label>
+          <select
+            value={form.sales_channel ?? DEFAULT_SALES_CHANNEL}
+            onChange={(e) => set("sales_channel", e.target.value)}
+            className={inputClass}
+          >
+            {SALES_CHANNELS.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-ink-mute">
+            {SALES_CHANNELS.find((c) => c.value === form.sales_channel)?.hint ??
+              SALES_CHANNELS[0].hint}
+          </p>
         </div>
 
         <div>
@@ -249,7 +277,7 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
           <input
             type="number"
             min={0}
-            step="0.01"
+            step="any"
             value={form.price ?? ""}
             onChange={(e) => set("price", num(e.target.value))}
             className={inputClass}
@@ -390,7 +418,7 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
             <input
               type="number"
               min={0}
-              step="0.01"
+              step="any"
               value={form.lot_size_acres ?? ""}
               onChange={(e) => set("lot_size_acres", num(e.target.value))}
               className={inputClass}

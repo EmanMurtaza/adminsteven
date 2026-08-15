@@ -2,6 +2,7 @@ import Header from "@/components/layout/Header";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { getListingById } from "@/lib/listings";
 import { formatDateTime, formatNumber, formatPrice } from "@/lib/format";
+import { salesChannelLabel } from "@/lib/types";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -20,6 +21,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
         <div className="bg-white border border-gold/25 rounded-xl p-5 sm:p-7 space-y-4 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]">
           <Row label="Title" value={listing.title} />
           <Row label="Type" value={listing.property_type?.replace("_", "-") ?? "—"} />
+          <Row label="Sub-category" value={salesChannelLabel(listing.sales_channel)} />
           <Row label="Status" value={listing.status} highlight />
           <Row label="Price" value={formatPrice(listing.price)} />
           <Row
