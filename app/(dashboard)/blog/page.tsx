@@ -96,6 +96,10 @@ export default async function BlogPage({
       email: email || null,
       phone: phone || null,
       lead_type: input.lead_type,
+      // A hand-typed contact has exactly the one role that was chosen. Without
+      // this the contact never appears under the Buyers or Sellers tabs, which
+      // filter on deal_types rather than the single lead_type column.
+      deal_types: input.lead_type === "unknown" ? [] : [input.lead_type],
       stage: input.stage,
       source: input.source.trim() || "manual",
       notes: input.notes.trim() || null,
