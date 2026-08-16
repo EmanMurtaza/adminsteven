@@ -2,15 +2,9 @@
 
 import { useState } from "react";
 import { Trash2, ChevronDown, Mail, Phone, CalendarClock, Check } from "lucide-react";
-import {
-  Contact,
-  LEAD_TYPES,
-  STAGES,
-  contactName,
-  leadTypeLabel,
-  stageLabel,
-} from "@/lib/contacts";
+import { Contact, LEAD_TYPES, STAGES, contactName, leadTypeLabel } from "@/lib/contacts";
 import { formatDate } from "@/lib/format";
+import RawDetails from "./RawDetails";
 
 interface Props {
   contacts: Contact[];
@@ -30,13 +24,35 @@ const stageStyles: Record<string, string> = {
 const typeStyles: Record<string, string> = {
   buyer: "bg-gold/15 text-gold-dark border border-gold/40",
   seller: "bg-navy/10 text-navy border border-navy/25",
-  investor: "bg-navy/10 text-navy border border-navy/25",
-  both: "bg-gold/15 text-gold-dark border border-gold/40",
+  renter: "bg-navy/10 text-navy border border-navy/25",
+  vendor: "bg-navy/10 text-navy border border-navy/25",
+  // Agents are not leads — a distinct colour stops them being worked as one.
+  agent: "bg-burgundy/10 text-burgundy border border-burgundy/25",
   unknown: "bg-cream-200 text-ink-mute border border-ink-mute/25",
 };
 
 const inputClass =
   "w-full bg-cream-100 border border-gold/30 text-navy rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent";
+
+/** "Austin, TX 78701" from whichever parts exist, or nothing at all. */
+function locationOf(c: Contact): string | null {
+  const line = [c.city, c.state].filter(Boolean).join(", ");
+  const full = [line, c.zip_code].filter(Boolean).join(" ");
+  return full || c.address || null;
+}
+
+/**
+ * BoldTrail derives these from what the contact actually browsed, which makes
+ * them the closest thing to a stated brief — worth showing above the
+ * housekeeping fields.
+ */
+function lookingFor(c: Contact): string | null {
+  const parts: string[] = [];
+  if (c.avg_price) parts.push(`~$${Math.round(c.avg_price).toLocaleString("en-US")}`);
+  if (c.avg_beds) parts.push(`${c.avg_beds} bd`);
+  if (c.avg_baths) parts.push(`${c.avg_baths} ba`);
+  return parts.length ? parts.join(" · ") : null;
+}
 
 /** Today in the business time zone, as yyyy-mm-dd, for comparing due dates. */
 function todayISO(): string {
@@ -220,6 +236,34 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                             />
                           </div>
                           <dl className="text-xs space-y-1.5">
+                            {/* Where they are and what they want, first —
+                                these are what you actually need when the phone
+                                is ringing. */}
+                            {/* The Type column can only show one role. When
+                                BoldTrail says someone is a buyer AND a seller,
+                                dropping the rest would lose the point. */}
+                            {c.deal_types?.length > 1 && (
+                              <Row
+                                label="Also"
+                                value={c.deal_types
+                                  .filter((t) => t !== c.lead_type)
+                                  .map(leadTypeLabel)
+                                  .join(", ")}
+                              />
+                            )}
+                            {locationOf(c) && <Row label="Location" value={locationOf(c)!} />}
+                            {lookingFor(c) && <Row label="Looking for" value={lookingFor(c)!} />}
+                            {c.company && (
+                              <Row
+                                label="Work"
+                                value={[c.job_title, c.company].filter(Boolean).join(", ")}
+                              />
+                            )}
+                            {c.spouse_name && <Row label="Spouse" value={c.spouse_name} />}
+                            {c.second_email && <Row label="Other email" value={c.second_email} />}
+                            {c.last_visit_at && (
+                              <Row label="Last visited site" value={formatDate(c.last_visit_at)} />
+                            )}
                             <Row label="Source" value={c.source ?? "—"} />
                             <Row label="Tags" value={c.tags?.length ? c.tags.join(", ") : "—"} />
                             <Row
@@ -227,11 +271,29 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                               value={c.last_contacted_at ? formatDate(c.last_contacted_at) : "Never"}
                             />
                             <Row label="Added" value={formatDate(c.created_at)} />
+                            {c.first_seen_at && (
+                              <Row label="First seen" value={formatDate(c.first_seen_at)} />
+                            )}
+                            {c.rating != null && <Row label="Rating" value={`${c.rating} / 5`} />}
+                            {c.assigned_agent && <Row label="Agent" value={c.assigned_agent} />}
+                            {c.homeowner_status && (
+                              <Row label="Homeowner" value={c.homeowner_status} />
+                            )}
+                            {c.last_closing_date && (
+                              <Row label="Last closing" value={formatDate(c.last_closing_date)} />
+                            )}
+                            {/* Only worth saying when it is a no — an unknown
+                                opt-in state is the normal case and reads as
+                                noise on every single row. */}
+                            {c.email_opt_in === false && (
+                              <Row label="Email opt-in" value="Opted out — do not send" />
+                            )}
                             {c.submission_id && (
                               <Row label="Origin" value="Website enquiry" />
                             )}
                           </dl>
                         </div>
+                        <RawDetails raw={c.raw} />
                       </td>
                     </tr>
                   )}

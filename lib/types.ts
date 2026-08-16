@@ -1,13 +1,38 @@
-export type ListingStatus = "draft" | "published" | "archived";
+export type ListingStatus = "draft" | "published" | "sold" | "archived";
 
 export type BlogStatus = "draft" | "published" | "archived";
 
-// Shared by the listing and blog filter dropdowns — both use the same three.
+// Shared by every section that has the same three states. Blogs use this as-is;
+// listings do NOT — see LISTING_STATUSES below.
 export const CONTENT_STATUSES: { value: string; label: string }[] = [
   { value: "draft", label: "Draft" },
   { value: "published", label: "Published" },
   { value: "archived", label: "Archived" },
 ];
+
+// Listings have a fourth state, and it is not a synonym for archived: sold is
+// an outcome worth keeping and reporting on, where archived means "put away".
+//
+// This is a separate list rather than a fourth entry on CONTENT_STATUSES
+// because blogs share that one, and a blog post cannot be sold.
+export const LISTING_STATUSES: { value: ListingStatus; label: string }[] = [
+  { value: "draft", label: "Draft" },
+  { value: "published", label: "Published" },
+  { value: "sold", label: "Sold" },
+  { value: "archived", label: "Archived" },
+];
+
+/**
+ * The statuses the listings list shows before you ask for anything else. Sold
+ * and archived listings are still there — they are one click away on their own
+ * tab — but they are done, and leaving them in the working list is what makes
+ * that list stop being useful.
+ */
+export const ACTIVE_LISTING_STATUSES: ListingStatus[] = ["draft", "published"];
+
+export function listingStatusLabel(status: string): string {
+  return LISTING_STATUSES.find((s) => s.value === status)?.label ?? status;
+}
 
 // What the property physically is. "off_market" used to sit in this list, which
 // was a category error — it describes how a property sells, not what it is, so
@@ -110,6 +135,10 @@ export interface Listing {
   mls_number: string | null;
   listing_date: string | null;
   days_on_market: number | null;
+  /** Set when status becomes "sold". The sale date, not the archive date. */
+  sold_at: string | null;
+  /** What it actually went for, which is rarely the asking `price`. */
+  sold_price: number | null;
   meta: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -142,6 +171,8 @@ export interface ListingInsert {
   images?: string[];
   virtual_tour_url?: string | null;
   mls_number?: string | null;
+  sold_at?: string | null;
+  sold_price?: number | null;
 }
 
 export type ListingUpdate = Partial<ListingInsert>;

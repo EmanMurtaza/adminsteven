@@ -39,6 +39,7 @@ type ListResult = { data: Listing[]; count: number };
 function queryKey(q: ListingQuery): string {
   return JSON.stringify({
     status: q.status ?? null,
+    statuses: q.statuses ?? null,
     propertyType: q.propertyType ?? null,
     featured: q.featured ?? false,
     // Every filter must appear here — two queries that differ only by a field
@@ -162,6 +163,8 @@ function withDefaults(data: ListingInsert) {
     mls_number: null,
     listing_date: null,
     days_on_market: null,
+    sold_at: null,
+    sold_price: null,
     meta: {} as Record<string, unknown>,
     // Derived last so the channel/boolean pair is consistent whichever one the
     // caller sent, rather than half-overwritten by the raw payload.
@@ -173,6 +176,12 @@ export interface ListingQuery {
   propertyType?: string | null;
   featured?: boolean;
   status?: ListingStatus;
+  /**
+   * Several statuses at once, for "everything still being worked" — which is
+   * what the admin list wants and a single `status` cannot express. Ignored
+   * when `status` is set, since that is the more specific ask.
+   */
+  statuses?: ListingStatus[];
   /** Sub-category: on-market / off-market / wholesale. A separate axis from type. */
   salesChannel?: SalesChannel | null;
   /** Coarser legacy form of `salesChannel`, kept for existing callers. */
@@ -201,6 +210,7 @@ export async function listListings(query: ListingQuery = {}): Promise<ListResult
 
   const filter: Filter<ListingDoc> = {};
   if (query.status) filter.status = query.status;
+  else if (query.statuses?.length) filter.status = { $in: query.statuses };
   if (query.propertyType) filter.property_type = query.propertyType as PropertyType;
   if (query.featured) filter.is_featured = true;
   if (query.salesChannel) filter.sales_channel = query.salesChannel;
@@ -278,6 +288,52 @@ export async function updateListing(id: string, data: ListingUpdate): Promise<Li
   return result ? toListing(result) : null;
 }
 
+/**
+ * Close a listing out.
+ *
+ * Deliberately a status change and not a delete. Sold listings are the comp
+ * data — what it went for, how long it took — which is the most valuable record
+ * an agent accumulates, and `contact_submissions.listing_id` points at them by
+ * id for every enquiry ever made. Deleting one strands that history, and the
+ * Atlas tier in use here has no point-in-time restore to undo it with (the
+ * 20-deep snapshot ring above is the whole safety net).
+ *
+ * It drops out of the working list because the admin default filters to
+ * ACTIVE_LISTING_STATUSES, and off the public website because GET /api/listings
+ * defaults to status=published. No extra plumbing needed for either.
+ *
+ * Goes through updateListing so the snapshot/invalidate pair around every write
+ * applies here too.
+ */
+export async function markListingSold(
+  id: string,
+  { sold_at, sold_price }: { sold_at?: string | null; sold_price?: number | null } = {}
+): Promise<Listing | null> {
+  const soldAt = sold_at || new Date().toISOString();
+
+  const patch: ListingUpdate = {
+    status: "sold",
+    sold_at: soldAt,
+    sold_price: sold_price ?? null,
+    // Nothing sold is still on the market, whatever it was listed as.
+    is_featured: false,
+  };
+
+  // Fill in days-on-market from the dates we now have, but never overwrite a
+  // figure already recorded — an imported listing may carry the real MLS one.
+  const current = await getListingById(id);
+  if (current && current.days_on_market == null && current.listing_date) {
+    const listed = new Date(current.listing_date).getTime();
+    const sold = new Date(soldAt).getTime();
+    if (Number.isFinite(listed) && Number.isFinite(sold) && sold >= listed) {
+      (patch as ListingUpdate & { days_on_market?: number }).days_on_market =
+        Math.round((sold - listed) / 86_400_000);
+    }
+  }
+
+  return updateListing(id, patch);
+}
+
 export async function deleteListing(id: string): Promise<boolean> {
   if (!ObjectId.isValid(id)) return false;
   const col = await collection();
@@ -299,6 +355,9 @@ export interface ListingAnalytics {
   featuredCount: number;
   avgPrice: number | null;
   avgDaysOnMarket: number | null;
+  soldCount: number;
+  /** Total sold_price across sold listings — the number that means something. */
+  soldVolume: number;
 }
 
 interface TotalsFacet {
@@ -307,6 +366,8 @@ interface TotalsFacet {
   featuredCount: number;
   avgPrice: number | null;
   avgDaysOnMarket: number | null;
+  soldCount: number;
+  soldVolume: number;
 }
 
 export async function getListingAnalytics(): Promise<ListingAnalytics> {
@@ -338,6 +399,19 @@ export async function getListingAnalytics(): Promise<ListingAnalytics> {
             featuredCount: { $sum: { $cond: ["$is_featured", 1, 0] } },
             avgPrice: { $avg: "$price" },
             avgDaysOnMarket: { $avg: "$days_on_market" },
+            soldCount: { $sum: { $cond: [{ $eq: ["$status", "sold"] }, 1, 0] } },
+            // Only sold listings contribute, and only those with a price
+            // recorded — an unrecorded sale should read as 0, not as the
+            // asking price.
+            soldVolume: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$status", "sold"] },
+                  { $ifNull: ["$sold_price", 0] },
+                  0,
+                ],
+              },
+            },
           },
         },
       ])
@@ -363,5 +437,7 @@ export async function getListingAnalytics(): Promise<ListingAnalytics> {
     featuredCount: totals?.featuredCount ?? 0,
     avgPrice: totals?.avgPrice ?? null,
     avgDaysOnMarket: totals?.avgDaysOnMarket ?? null,
+    soldCount: totals?.soldCount ?? 0,
+    soldVolume: totals?.soldVolume ?? 0,
   };
 }

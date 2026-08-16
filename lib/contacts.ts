@@ -16,15 +16,31 @@ export const STAGES = [
 
 export type Stage = (typeof STAGES)[number]["value"];
 
+// BoldTrail's own vocabulary, deliberately. Importing into an invented list
+// meant "vendor" and "agent" became "unknown" and every multi-role contact
+// became "both" — a translation step that only ever lost detail.
+//
+// Order is meaningful: it is the precedence used to pick the single `lead_type`
+// when a contact holds several roles (see pickLeadType in boldtrail/mapping).
 export const LEAD_TYPES = [
   { value: "buyer", label: "Buyer" },
   { value: "seller", label: "Seller" },
-  { value: "investor", label: "Investor" },
-  { value: "both", label: "Buyer & Seller" },
+  { value: "renter", label: "Renter" },
+  { value: "vendor", label: "Vendor" },
+  { value: "agent", label: "Agent" },
   { value: "unknown", label: "Unknown" },
 ] as const;
 
 export type LeadType = (typeof LEAD_TYPES)[number]["value"];
+
+/** Precedence for reducing several roles to the one shown in a single column. */
+export const LEAD_TYPE_PRECEDENCE: LeadType[] = [
+  "buyer",
+  "seller",
+  "renter",
+  "vendor",
+  "agent",
+];
 
 export interface Contact {
   id: string;
@@ -33,12 +49,53 @@ export interface Contact {
   email: string | null;
   phone: string | null;
   lead_type: LeadType;
+  /**
+   * Every role this contact holds. BoldTrail's deal_type is multi-valued, and
+   * "buyer,seller,renter" is one of the commonest values — `lead_type` is just
+   * the first of these by precedence, kept single so filters and the pipeline
+   * board still work.
+   */
+  deal_types: string[];
   stage: Stage;
   source: string | null;
   tags: string[];
   next_follow_up: string | null;
   last_contacted_at: string | null;
   notes: string | null;
+
+  // Promoted out of a BoldTrail export because Steven needs to act on them —
+  // everything else from that file stays in `raw`. See
+  // supabase/add_contact_enrichment.sql for why these six.
+  rating: number | null;
+  /** False means do not email. The campaigns feature must respect this. */
+  email_opt_in: boolean | null;
+  assigned_agent: string | null;
+  /** BoldTrail's "registered date" — older than our own created_at on imports. */
+  first_seen_at: string | null;
+  last_closing_date: string | null;
+  homeowner_status: string | null;
+
+  // Where they are, who they are, and what they are looking for. See
+  // supabase/add_contact_details.sql.
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  company: string | null;
+  job_title: string | null;
+  birthday: string | null;
+  second_email: string | null;
+  spouse_name: string | null;
+  spouse_email: string | null;
+  spouse_phone: string | null;
+  /** Derived by BoldTrail from what they actually browsed — a buying brief. */
+  avg_price: number | null;
+  avg_beds: number | null;
+  avg_baths: number | null;
+  capture_method: string | null;
+  referrer: string | null;
+  last_visit_at: string | null;
+
   submission_id: string | null;
   raw: Record<string, unknown>;
   created_at: string;
@@ -49,7 +106,9 @@ export type ContactDraft = Partial<
   Pick<
     Contact,
     | "first_name" | "last_name" | "email" | "phone"
-    | "lead_type" | "stage" | "source" | "tags" | "notes" | "next_follow_up"
+    | "lead_type" | "deal_types" | "stage" | "source" | "tags" | "notes" | "next_follow_up"
+    | "rating" | "email_opt_in" | "assigned_agent"
+    | "first_seen_at" | "last_closing_date" | "homeowner_status"
   >
 > & { raw?: Record<string, unknown> };
 
@@ -77,17 +136,27 @@ export interface ImportField {
 
 // `full_name` is not a column — it is split across first/last on import,
 // because plenty of exports ship one "Name" column instead of two.
+//
+// `email_opt_in` sits above `email` deliberately: a header like "Email Opt In"
+// contains the substring "email", so if `email` were offered first the partial
+// match below would hand it the wrong column.
 export const IMPORT_FIELDS: ImportField[] = [
   { key: "full_name", label: "Full name (split)", aliases: ["name", "full name", "fullname", "contact name", "contact"] },
   { key: "first_name", label: "First name", aliases: ["first name", "firstname", "first", "given name", "fname"] },
   { key: "last_name", label: "Last name", aliases: ["last name", "lastname", "last", "surname", "family name", "lname"] },
+  { key: "email_opt_in", label: "Email opt-in", aliases: ["email opt in", "email opt-in", "opt in", "opt-in", "email optin", "subscribed", "email subscribed"] },
   { key: "email", label: "Email", aliases: ["email", "e-mail", "email address", "primary email", "email 1"] },
   { key: "phone", label: "Phone", aliases: ["phone", "phone number", "mobile", "mobile phone", "cell", "cell phone", "primary phone", "phone 1", "telephone"] },
-  { key: "lead_type", label: "Buyer / seller", aliases: ["type", "lead type", "contact type", "category", "buyer or seller"] },
+  { key: "lead_type", label: "Buyer / seller", aliases: ["type", "lead type", "contact type", "category", "buyer or seller", "deal type", "transaction type"] },
   { key: "stage", label: "Stage", aliases: ["stage", "status", "lead status", "pipeline", "pipeline stage"] },
-  { key: "source", label: "Source", aliases: ["source", "lead source", "origin", "referral source"] },
+  { key: "source", label: "Source", aliases: ["source", "lead source", "origin", "referral source", "capture method", "referrer"] },
   { key: "tags", label: "Tags", aliases: ["tags", "labels", "groups", "hashtags"] },
   { key: "notes", label: "Notes", aliases: ["notes", "note", "comments", "comment", "description"] },
+  { key: "rating", label: "Rating", aliases: ["rating", "star rating", "lead rating", "score"] },
+  { key: "assigned_agent", label: "Assigned agent", aliases: ["assigned agent", "agent", "agent name", "assigned to", "owner", "assigned user"] },
+  { key: "first_seen_at", label: "First seen", aliases: ["registered date", "date registered", "created date", "date created", "first seen"] },
+  { key: "last_closing_date", label: "Last closing date", aliases: ["last closing date", "closing date", "close date"] },
+  { key: "homeowner_status", label: "Homeowner status", aliases: ["homeowner", "homeowner status", "home owner", "owns home"] },
 ];
 
 /** header index -> field key (or null to ignore that column). */
@@ -114,9 +183,13 @@ export function guessMapping(headers: string[]): Mapping {
     const exact = IMPORT_FIELDS.find((f) => !taken.has(f.key) && f.aliases.includes(h));
     if (exact) return claim(index, exact.key);
 
-    const partial = IMPORT_FIELDS.find(
-      (f) => !taken.has(f.key) && f.aliases.some((a) => h.includes(a))
-    );
+    // Longest matching alias wins, not the first field in the list. With a
+    // 100-column export the short aliases match far too eagerly — "Last Closing
+    // Date" contains both "last" and "last closing date", and only the second
+    // one is right.
+    const partial = IMPORT_FIELDS.filter((f) => !taken.has(f.key))
+      .flatMap((f) => f.aliases.filter((a) => h.includes(a)).map((a) => ({ key: f.key, a })))
+      .sort((x, y) => y.a.length - x.a.length)[0];
     if (partial) return claim(index, partial.key);
   });
 
@@ -130,7 +203,7 @@ export function guessMapping(headers: string[]): Mapping {
   return mapping;
 }
 
-function splitName(full: string): { first: string; last: string } {
+export function splitName(full: string): { first: string; last: string } {
   const trimmed = full.trim();
 
   // "Doe, Jane" — plenty of CRMs, BoldTrail included, export surname first.
@@ -145,20 +218,44 @@ function splitName(full: string): { first: string; last: string } {
   return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
-function normalizeLeadType(value: string): LeadType {
+/**
+ * Every role a value mentions, in precedence order.
+ *
+ * The input is often several roles at once — BoldTrail's deal_type ships
+ * "buyer,seller,renter" — and a spreadsheet column can say "Buyer & Seller".
+ * Both are handled by looking for each role independently rather than trying to
+ * match the whole string.
+ */
+export function extractLeadTypes(value: string): LeadType[] {
   const v = value.trim().toLowerCase();
-  if (!v) return "unknown";
-  if (v.includes("both")) return "both";
-  if (v.includes("invest")) return "investor";
-  const buyer = v.includes("buy");
-  const seller = v.includes("sell") || v.includes("list");
-  if (buyer && seller) return "both";
-  if (buyer) return "buyer";
-  if (seller) return "seller";
-  return "unknown";
+  if (!v) return [];
+
+  const found = new Set<LeadType>();
+  if (/\bbuy/.test(v) || v.includes("purchas")) found.add("buyer");
+  if (v.includes("sell") || v.includes("list")) found.add("seller");
+  // "vendor" is the seller in plenty of markets; keep it distinct because
+  // BoldTrail treats it as its own role rather than a synonym.
+  if (v.includes("vendor")) found.add("vendor");
+  if (v.includes("rent") || v.includes("tenant") || v.includes("lease")) found.add("renter");
+  if (v.includes("agent") || v.includes("realtor") || v.includes("broker")) found.add("agent");
+  // "Buyer & Seller" and the old "both" both mean the two sides.
+  if (v.includes("both")) {
+    found.add("buyer");
+    found.add("seller");
+  }
+  // An investor has no counterpart in BoldTrail's list; on the buying side it
+  // is a buyer, and the original word survives in `deal_types`.
+  if (v.includes("invest")) found.add("buyer");
+
+  return LEAD_TYPE_PRECEDENCE.filter((t) => found.has(t));
 }
 
-function normalizeStage(value: string): Stage {
+/** The single value shown in the Type column — the first role by precedence. */
+export function normalizeLeadType(value: string): LeadType {
+  return extractLeadTypes(value)[0] ?? "unknown";
+}
+
+export function normalizeStage(value: string): Stage {
   const v = value.trim().toLowerCase();
   if (!v) return "new";
   const direct = STAGES.find((s) => s.value === v || s.label.toLowerCase() === v);
@@ -170,6 +267,39 @@ function normalizeStage(value: string): Stage {
   if (v.includes("active") || v.includes("working") || v.includes("hot")) return "active";
   if (v.includes("contact") || v.includes("attempt")) return "contacted";
   return "new";
+}
+
+/** 0-5, to match the CHECK constraint. Anything unparseable is left unset. */
+function normalizeRating(value: string): number | null {
+  const n = Number.parseFloat(value.replace(/[^\d.-]/g, ""));
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(5, Math.round(n)));
+}
+
+/**
+ * Tri-state on purpose: null means "the export did not say", which is not the
+ * same as "opted out". Only an explicit negative blocks a campaign send.
+ */
+function normalizeBoolean(value: string): boolean | null {
+  const v = value.trim().toLowerCase();
+  if (!v) return null;
+  if (["yes", "y", "true", "1", "opted in", "opt in", "subscribed", "active"].includes(v)) return true;
+  if (["no", "n", "false", "0", "opted out", "opt out", "unsubscribed", "inactive"].includes(v)) return false;
+  return null;
+}
+
+/**
+ * Exports date columns in whatever the account's locale produced, so anything
+ * unrecognised is dropped rather than guessed — a wrong closing date is worse
+ * than none. `dateOnly` returns YYYY-MM-DD for `date` columns.
+ */
+function normalizeDate(value: string, dateOnly = false): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  const parsed = new Date(v);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const iso = parsed.toISOString();
+  return dateOnly ? iso.slice(0, 10) : iso;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -213,10 +343,17 @@ export function buildContact(
     email: email || null,
     phone: phone || null,
     lead_type: normalizeLeadType(get("lead_type")),
+    deal_types: extractLeadTypes(get("lead_type")),
     stage: normalizeStage(get("stage")),
     source: get("source") || defaults.source || "csv",
     tags: tagsRaw ? tagsRaw.split(/[,;|]/).map((t) => t.trim()).filter(Boolean) : [],
     notes: get("notes") || null,
+    rating: normalizeRating(get("rating")),
+    email_opt_in: normalizeBoolean(get("email_opt_in")),
+    assigned_agent: get("assigned_agent") || null,
+    first_seen_at: normalizeDate(get("first_seen_at")),
+    last_closing_date: normalizeDate(get("last_closing_date"), true),
+    homeowner_status: get("homeowner_status") || null,
     raw,
   };
 

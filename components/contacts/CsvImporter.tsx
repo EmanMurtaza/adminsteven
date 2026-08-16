@@ -203,6 +203,10 @@ export default function CsvImporter({ onImport }: Props) {
               ))}
             </div>
 
+            <UnmappedNote
+              headers={headers.filter((h, i) => h && !mapping[i])}
+            />
+
             <div className="mt-6 pt-5 border-t border-gold/15 max-w-xs">
               <label className="block text-xs font-medium text-navy mb-1.5">
                 Label these contacts as coming from
@@ -316,6 +320,44 @@ export default function CsvImporter({ onImport }: Props) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * A BoldTrail export runs to 100+ columns and only a dozen map onto a field, so
+ * "Ignore this column" reads like "throw this away" a hundred times over. It is
+ * not: every column is stored verbatim on the contact and shown under "original
+ * import". Saying so here is the difference between a scary screen and a calm
+ * one.
+ */
+function UnmappedNote({ headers }: { headers: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (headers.length === 0) return null;
+
+  return (
+    <div className="mt-5 border border-gold/25 bg-cream-100 rounded-lg px-3.5 py-3">
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="text-xs text-navy hover:text-gold-dark transition-colors text-left"
+      >
+        <span className="font-semibold">{headers.length}</span> other column
+        {headers.length === 1 ? " is" : "s are"} kept as-is, not discarded —{" "}
+        <span className="underline underline-offset-2">
+          {open ? "hide" : "see which"}
+        </span>
+      </button>
+      {open && (
+        <p className="text-[11px] text-ink-soft mt-2 leading-relaxed">
+          {headers.join(" · ")}
+        </p>
+      )}
+      <p className="text-[11px] text-ink-mute mt-2">
+        These are saved with each contact and shown under “original import” on
+        the contact’s details. Map one above only if you want to filter or sort
+        by it.
+      </p>
     </div>
   );
 }

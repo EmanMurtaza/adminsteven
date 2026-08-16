@@ -18,11 +18,17 @@ import { redirect } from "next/navigation";
 // /contacts (with its search and pagination) for the complete list.
 const BOARD_LIMIT = 500;
 
+// BoldTrail's roles. A contact can hold several — "buyer, seller, renter" is
+// one of the commonest values — so these filter on `deal_types`, not on the
+// single `lead_type` column, and the same person can appear under more than one
+// tab. That is correct: they really are both.
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "buyer", label: "Buyers" },
   { key: "seller", label: "Sellers" },
-  { key: "investor", label: "Investors" },
+  { key: "renter", label: "Renters" },
+  { key: "vendor", label: "Vendors" },
+  { key: "agent", label: "Agents" },
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number]["key"];
@@ -72,9 +78,9 @@ export default async function PipelinePage({
     .order("created_at", { ascending: false })
     .range(0, BOARD_LIMIT - 1);
 
-  if (filter === "buyer") query = query.or("lead_type.eq.buyer,lead_type.eq.both");
-  else if (filter === "seller") query = query.or("lead_type.eq.seller,lead_type.eq.both");
-  else if (filter === "investor") query = query.eq("lead_type", "investor");
+  // Array containment, so a contact who is both a buyer and a seller shows on
+  // both tabs rather than only under whichever role happened to win.
+  if (filter !== "all") query = query.contains("deal_types", [filter]);
 
   if (followUp === "due") query = query.lte("next_follow_up", today);
   else if (followUp === "upcoming") query = query.gt("next_follow_up", today);

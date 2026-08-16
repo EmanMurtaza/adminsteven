@@ -14,6 +14,9 @@ interface ListingsTableProps {
 const statusStyles: Record<string, string> = {
   published: "bg-gold/15 text-gold-dark border border-gold/40",
   draft: "bg-cream-200 text-ink-soft border border-ink-mute/30",
+  // Sold is a result, not a filing state — it gets the one colour that reads as
+  // "done well" rather than the grey archived shares with draft.
+  sold: "bg-burgundy/10 text-burgundy border border-burgundy/30",
   archived: "bg-navy/10 text-navy-500 border border-navy/20",
 };
 

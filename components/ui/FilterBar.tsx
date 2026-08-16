@@ -93,6 +93,32 @@ export function SearchField({
   );
 }
 
+/**
+ * A compact free-text filter, for values that come from the data rather than a
+ * fixed list — a tag, say, where the options are whatever the last import
+ * happened to contain and enumerating them would mean reading every row.
+ */
+export function TextField({
+  name,
+  value,
+  placeholder,
+}: {
+  name: string;
+  value: string | undefined;
+  placeholder: string;
+}) {
+  return (
+    <input
+      type="text"
+      name={name}
+      defaultValue={value ?? ""}
+      placeholder={placeholder}
+      aria-label={placeholder}
+      className={`${controlClass} w-40 placeholder-ink-mute/60`}
+    />
+  );
+}
+
 /** A labelled dropdown whose first entry means "no filter". */
 export function SelectField({
   name,

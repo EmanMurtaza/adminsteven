@@ -7,6 +7,7 @@ import {
   FilterTabs,
   SearchField,
   SelectField,
+  TextField,
   queryString,
 } from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
@@ -26,10 +27,14 @@ const VIEWS = [
 
 type ViewKey = (typeof VIEWS)[number]["key"];
 
-// The three ways a contact gets here — see the import actions below.
+// How a contact got here — see the import actions below. This list is an
+// allowlist: `source` is free text on the way in, but only these are offered as
+// a filter, so anything missing here becomes unfilterable. "boldtrail" is the
+// CSV importer's default label and the value the sync writes.
 const SOURCES = [
   { value: "website", label: "Website form" },
   { value: "csv", label: "CSV import" },
+  { value: "boldtrail", label: "BoldTrail" },
   { value: "manual", label: "Added by hand" },
 ];
 
@@ -57,7 +62,7 @@ export default async function ContactsPage({
   const stage = STAGES.some((s) => s.value === str(params.stage))
     ? str(params.stage)
     : undefined;
-  // The tabs cover buyers and sellers; this reaches the rest (investor, both).
+  // The tabs cover buyers and sellers; this reaches renters, vendors and agents.
   const leadType = LEAD_TYPES.some((t) => t.value === str(params.type))
     ? str(params.type)
     : undefined;
@@ -65,11 +70,14 @@ export default async function ContactsPage({
     ? str(params.source)
     : undefined;
   const search = str(params.q)?.trim();
+  // Free text rather than a dropdown: tags come from whatever the last import
+  // contained, and listing them all would mean reading every row.
+  const tag = str(params.tag)?.trim();
   const page = Math.max(1, Number(str(params.page) ?? "1") || 1);
   const from = (page - 1) * PAGE_SIZE;
   const today = todayISO();
 
-  const isFiltered = Boolean(stage || leadType || source || search);
+  const isFiltered = Boolean(stage || leadType || source || search || tag);
 
   let query = supabase
     .from("contacts")
@@ -79,18 +87,25 @@ export default async function ContactsPage({
     .order("created_at", { ascending: false });
 
   if (view === "due") query = query.lte("next_follow_up", today);
-  else if (view === "buyer") query = query.or("lead_type.eq.buyer,lead_type.eq.both");
-  else if (view === "seller") query = query.or("lead_type.eq.seller,lead_type.eq.both");
+  // Array containment: a contact who is both a buyer and a seller belongs under
+  // both tabs, which the single `lead_type` column cannot express.
+  else if (view === "buyer") query = query.contains("deal_types", ["buyer"]);
+  else if (view === "seller") query = query.contains("deal_types", ["seller"]);
 
   if (stage) query = query.eq("stage", stage);
-  if (leadType) query = query.eq("lead_type", leadType);
+  if (leadType) query = query.contains("deal_types", [leadType]);
   if (source) query = query.eq("source", source);
+  // Array containment, served by contacts_tags_idx (GIN).
+  if (tag) query = query.contains("tags", [tag]);
   if (search) {
     // Strip the delimiters PostgREST uses inside or() so a comma or bracket in
     // the search box cannot split into bogus conditions.
     const like = `%${search.replace(/[,()]/g, " ")}%`;
+    // Location and company are in here because "who do I know in Round Rock"
+    // is a question this list gets asked far more often than an exact
+    // name lookup.
     query = query.or(
-      `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`
+      `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},city.ilike.${like},state.ilike.${like},company.ilike.${like}`
     );
   }
 
@@ -149,6 +164,8 @@ export default async function ContactsPage({
       email: email || null,
       phone: phone || null,
       lead_type: input.lead_type,
+      // A hand-typed contact has exactly the one role that was chosen.
+      deal_types: input.lead_type === "unknown" ? [] : [input.lead_type],
       stage: input.stage,
       source: input.source.trim() || "manual",
       notes: input.notes.trim() || null,
@@ -206,12 +223,16 @@ export default async function ContactsPage({
         // the form, so that answer is what decides the lead type.
         const bothSides = /^I am a:\s*Both\s*$/m.test(s.message ?? "");
         const side = s.source === "buyer" || s.source === "seller" ? s.source : "unknown";
+        // Someone doing both sides holds two roles now rather than collapsing
+        // into a single "both" value that no longer exists.
+        const roles = bothSides ? ["buyer", "seller"] : side === "unknown" ? [] : [side];
         return {
           first_name: parts[0] || null,
           last_name: parts.slice(1).join(" ") || null,
           email: s.email?.toLowerCase() || null,
           phone: s.phone || null,
-          lead_type: bothSides ? "both" : side,
+          lead_type: roles[0] ?? "unknown",
+          deal_types: roles,
           stage: "new",
           source: "website",
           submission_id: s.id,
@@ -233,7 +254,7 @@ export default async function ContactsPage({
   // Every filter except the one being changed rides along, so switching tabs
   // keeps your search and dropdowns. `page` is never carried — a different
   // filter means a different result set, so it starts at page 1.
-  const carried = { stage, type: leadType, source, q: search };
+  const carried = { stage, type: leadType, source, q: search, tag };
   const qs = (over: Record<string, string | undefined>) =>
     queryString("/contacts", {
       view: view === "all" ? undefined : view,
@@ -273,7 +294,7 @@ export default async function ContactsPage({
         >
           <SearchField
             defaultValue={search}
-            placeholder="Search name, email or phone…"
+            placeholder="Search name, email, phone, city…"
           />
           <SelectField name="stage" value={stage} anyLabel="Any stage" options={STAGES} />
           <SelectField
@@ -288,6 +309,7 @@ export default async function ContactsPage({
             anyLabel="Any source"
             options={SOURCES}
           />
+          <TextField name="tag" value={tag} placeholder="Tag…" />
         </FilterBar>
 
         {/* The pager itself hides on a single page, so say where you are here
@@ -316,7 +338,7 @@ export default async function ContactsPage({
           <div className="bg-white border border-gold/30 rounded-xl p-8 text-center">
             <p className="text-ink-soft mb-3">No contacts match these filters.</p>
             <Link
-              href={qs({ stage: undefined, type: undefined, source: undefined, q: undefined })}
+              href={qs({ stage: undefined, type: undefined, source: undefined, q: undefined, tag: undefined })}
               className="text-navy underline underline-offset-4 hover:text-gold text-sm"
             >
               Clear filters

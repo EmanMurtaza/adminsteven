@@ -7,6 +7,7 @@ import {
   ListingInsert,
   PROPERTY_TYPES,
   SALES_CHANNELS,
+  LISTING_STATUSES,
   DEFAULT_SALES_CHANNEL,
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
@@ -266,10 +267,18 @@ export default function ListingForm({ initialData, onSubmit }: ListingFormProps)
             onChange={(e) => set("status", e.target.value)}
             className={inputClass}
           >
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
+            {LISTING_STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
           </select>
+          {form.status === "sold" && (
+            <p className="mt-1.5 text-xs text-ink-mute">
+              Drops off the website and out of the Active list. Use “Mark as
+              sold” on the listing page to record the sale price too.
+            </p>
+          )}
         </div>
 
         <div>

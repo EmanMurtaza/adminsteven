@@ -13,7 +13,9 @@ interface Props {
 const typeStyles: Record<string, string> = {
   buyer: "bg-gold/15 text-gold-dark border-gold/40",
   seller: "bg-navy/10 text-navy border-navy/25",
-  investor: "bg-navy/10 text-navy border-navy/25",
+  renter: "bg-navy/10 text-navy border-navy/25",
+  vendor: "bg-navy/10 text-navy border-navy/25",
+  agent: "bg-burgundy/10 text-burgundy border-burgundy/25",
   both: "bg-gold/15 text-gold-dark border-gold/40",
   unknown: "bg-cream-200 text-ink-mute border-ink-mute/25",
 };

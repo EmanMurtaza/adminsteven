@@ -51,27 +51,56 @@ export default async function ImportContactsPage() {
     // Split on what already exists so we can report honest numbers and, more
     // importantly, avoid trampling stage/notes/follow-up on contacts Steven has
     // already worked. An import refreshes contact details, nothing else.
-    const emails = drafts.map((d) => d.email).filter(Boolean) as string[];
-    const { data: existing } = emails.length
-      ? await supabase.from("contacts").select("id, email").in("email", emails)
-      : { data: [] };
+    //
+    // The match must be case-insensitive, and that rules out `.in("email", …)`:
+    // drafts are lower-cased on the way in, but rows already in the table are
+    // stored however they first arrived. A "John@x.com" in the table would not
+    // match a "john@x.com" draft, so the row would be queued as an insert and
+    // then violate `contacts_email_unique` (a unique index on lower(email)) —
+    // taking its whole 500-row chunk down with it.
+    //
+    // So pull the id/email pairs and match in JS. Paged, because PostgREST caps
+    // a response at 1000 rows and silently truncating here would recreate the
+    // exact bug this is fixing.
+    const existing: { id: string; email: string | null; first_name: string | null; last_name: string | null; phone: string | null }[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from("contacts")
+        .select("id, email, first_name, last_name, phone")
+        .not("email", "is", null)
+        .range(from, from + PAGE - 1);
+      if (error) return { inserted: 0, updated: 0, error: error.message };
+      existing.push(...(data ?? []));
+      if (!data || data.length < PAGE) break;
+    }
 
     const byEmail = new Map(
-      (existing ?? []).map((c) => [(c.email ?? "").toLowerCase(), c.id])
+      existing
+        .filter((c) => c.email)
+        .map((c) => [c.email!.toLowerCase(), c])
     );
 
     const toInsert: ContactDraft[] = [];
-    const toUpdate: { id: string; patch: Partial<ContactDraft> }[] = [];
+    const toUpdate: Record<string, unknown>[] = [];
 
     for (const draft of drafts) {
-      const id = draft.email ? byEmail.get(draft.email) : undefined;
-      if (id) {
-        const patch: Partial<ContactDraft> = {};
-        // Only fill gaps — never overwrite something already there.
-        if (draft.first_name) patch.first_name = draft.first_name;
-        if (draft.last_name) patch.last_name = draft.last_name;
-        if (draft.phone) patch.phone = draft.phone;
-        if (Object.keys(patch).length) toUpdate.push({ id, patch });
+      const match = draft.email ? byEmail.get(draft.email) : undefined;
+      if (match) {
+        // Only fill gaps — never overwrite something already there. Merging
+        // against the current value (rather than sending a sparse patch) keeps
+        // every row's key set identical, which the batched upsert below needs.
+        const merged = {
+          id: match.id,
+          first_name: match.first_name || draft.first_name || null,
+          last_name: match.last_name || draft.last_name || null,
+          phone: match.phone || draft.phone || null,
+        };
+        const changed =
+          merged.first_name !== match.first_name ||
+          merged.last_name !== match.last_name ||
+          merged.phone !== match.phone;
+        if (changed) toUpdate.push(merged);
       } else {
         toInsert.push(draft);
       }
@@ -85,6 +114,8 @@ export default async function ImportContactsPage() {
       const columns = [
         "first_name", "last_name", "email", "phone",
         "lead_type", "stage", "source", "tags", "notes", "raw",
+        "rating", "email_opt_in", "assigned_agent",
+        "first_seen_at", "last_closing_date", "homeowner_status",
       ] as const;
       const squared = toInsert.map((d) =>
         Object.fromEntries(
@@ -105,10 +136,19 @@ export default async function ImportContactsPage() {
       }
     }
 
+    // Batched, not one UPDATE per row: a few thousand sequential round-trips
+    // will outlast the request. Conflicting on `id` means these only ever
+    // update rows that were matched above, never create new ones.
     let updated = 0;
-    for (const { id, patch } of toUpdate) {
-      const { error } = await supabase.from("contacts").update(patch).eq("id", id);
-      if (!error) updated++;
+    for (let i = 0; i < toUpdate.length; i += 500) {
+      const chunk = toUpdate.slice(i, i + 500);
+      const { error } = await supabase.from("contacts").upsert(chunk, { onConflict: "id" });
+      if (error) {
+        await logBatch(inserted, updated);
+        revalidatePath("/contacts/import");
+        return { inserted, updated, error: error.message };
+      }
+      updated += chunk.length;
     }
 
     await logBatch(inserted, updated);

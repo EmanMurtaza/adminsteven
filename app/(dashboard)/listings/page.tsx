@@ -3,6 +3,7 @@ import ListingsTable from "@/components/listings/ListingsTable";
 import Pagination from "@/components/ui/Pagination";
 import {
   FilterBar,
+  FilterTabs,
   SearchField,
   SelectField,
   queryString,
@@ -10,7 +11,8 @@ import {
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { deleteListing as deleteListingDoc, listListings } from "@/lib/listings";
 import {
-  CONTENT_STATUSES,
+  ACTIVE_LISTING_STATUSES,
+  LISTING_STATUSES,
   PROPERTY_TYPES,
   SALES_CHANNELS,
   ListingStatus,
@@ -23,6 +25,25 @@ import { redirect } from "next/navigation";
 const PAGE_SIZE = 10;
 
 const FLAGS = [{ value: "featured", label: "Featured only" }];
+
+// Lifecycle buckets. "Active" is the default because a sold listing is finished
+// work — still here, still searchable, just not in the way of what is live.
+const VIEWS = [
+  { key: "active", label: "Active" },
+  { key: "sold", label: "Sold" },
+  { key: "archived", label: "Archived" },
+  { key: "all", label: "All" },
+] as const;
+
+type ViewKey = (typeof VIEWS)[number]["key"];
+
+/** The statuses a tab stands for. `undefined` means "do not filter by status". */
+function statusesForView(view: ViewKey): ListingStatus[] | undefined {
+  if (view === "active") return ACTIVE_LISTING_STATUSES;
+  if (view === "sold") return ["sold"];
+  if (view === "archived") return ["archived"];
+  return undefined;
+}
 
 function str(v: string | string[] | undefined): string | undefined {
   return typeof v === "string" && v ? v : undefined;
@@ -39,9 +60,11 @@ export default async function ListingsPage({
 
   const params = await searchParams;
   const q = str(params.q)?.trim();
+  const rawView = str(params.view);
+  const view: ViewKey = VIEWS.some((v) => v.key === rawView) ? (rawView as ViewKey) : "active";
   // Only accept values we actually offer — a hand-edited URL should not reach
   // the query layer as an unknown status.
-  const status = CONTENT_STATUSES.some((s) => s.value === str(params.status))
+  const status = LISTING_STATUSES.some((s) => s.value === str(params.status))
     ? (str(params.status) as ListingStatus)
     : undefined;
   const type = PROPERTY_TYPES.some((t) => t.value === str(params.type))
@@ -62,7 +85,10 @@ export default async function ListingsPage({
   try {
     const res = await listListings({
       search: q || null,
+      // An exact status from the dropdown beats the tab's bucket — the more
+      // specific ask wins. listListings applies the same precedence.
       status,
+      statuses: statusesForView(view),
       propertyType: type ?? null,
       salesChannel: channel ?? null,
       featured: flag === "featured",
@@ -93,15 +119,29 @@ export default async function ListingsPage({
   }
 
   // Every active filter rides along on the page links, so paging does not
-  // silently drop back to the unfiltered list.
+  // silently drop back to the unfiltered list. `view` is a place in the app
+  // rather than a filter, so it is carried separately and survives Clear.
   const carried = { q, status, type, channel, flag };
+  const viewParam = view === "active" ? undefined : view;
+  const qs = (over: Record<string, string | undefined>) =>
+    queryString("/listings", { view: viewParam, ...carried, ...over });
 
   return (
     <>
       <Header title="Listings" />
       <main className="p-4 sm:p-8 space-y-5">
+        <FilterTabs
+          tabs={VIEWS}
+          active={view}
+          href={(key) => qs({ view: key === "active" ? undefined : key, status: undefined })}
+        />
+
         <div className="flex justify-between items-start gap-3 flex-wrap">
-          <FilterBar action="/listings" isFiltered={isFiltered}>
+          <FilterBar
+            action="/listings"
+            isFiltered={isFiltered}
+            hidden={{ view: viewParam }}
+          >
             <SearchField
               defaultValue={q}
               placeholder="Search title, address, city, MLS #…"
@@ -110,7 +150,7 @@ export default async function ListingsPage({
               name="status"
               value={status}
               anyLabel="Any status"
-              options={CONTENT_STATUSES}
+              options={LISTING_STATUSES}
             />
             <SelectField
               name="type"
@@ -163,7 +203,7 @@ export default async function ListingsPage({
           <div className="bg-white border border-gold/30 rounded-xl p-8 text-center">
             <p className="text-ink-soft mb-3">No listings match these filters.</p>
             <Link
-              href={queryString("/listings", {})}
+              href={queryString("/listings", { view: viewParam })}
               className="text-navy underline underline-offset-4 hover:text-gold text-sm"
             >
               Clear filters
@@ -177,7 +217,7 @@ export default async function ListingsPage({
           currentPage={page}
           totalPages={totalPages}
           basePath="/listings"
-          extraParams={carried}
+          extraParams={{ view: viewParam, ...carried }}
         />
       </main>
     </>

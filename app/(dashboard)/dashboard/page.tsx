@@ -5,7 +5,7 @@ import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { getPipelineAnalytics, getInquiryAnalytics } from "@/lib/analytics";
 import { getListingAnalytics, listListings } from "@/lib/listings";
 import { formatPrice, percentChange } from "@/lib/format";
-import { Users, UserPlus, Bell, Target, Building2, DollarSign } from "lucide-react";
+import { Users, UserPlus, Bell, Target, Building2, DollarSign, CheckCircle2 } from "lucide-react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
@@ -83,6 +83,8 @@ export default async function DashboardPage() {
       email: email || null,
       phone: phone || null,
       lead_type: input.lead_type,
+      // A hand-typed contact has exactly the one role that was chosen.
+      deal_types: input.lead_type === "unknown" ? [] : [input.lead_type],
       stage: input.stage,
       source: input.source.trim() || "manual",
       notes: input.notes.trim() || null,
@@ -176,6 +178,20 @@ export default async function DashboardPage() {
               value={formatPrice(listingStats.avgPrice)}
               href="/listings"
             />
+            {/* Only once there is something to show — a permanent "0 sold"
+                chip is a reproach, not a metric. */}
+            {listingStats.soldCount > 0 && (
+              <Chip
+                icon={<CheckCircle2 size={14} />}
+                label="Sold"
+                value={
+                  listingStats.soldVolume > 0
+                    ? `${listingStats.soldCount} · ${formatPrice(listingStats.soldVolume)}`
+                    : String(listingStats.soldCount)
+                }
+                href="/listings?view=sold"
+              />
+            )}
           </div>
         </div>
 
