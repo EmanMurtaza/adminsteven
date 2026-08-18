@@ -1,4 +1,11 @@
-import { extractLeadTypes, splitName, type LeadType } from "../contacts";
+import {
+  DEFAULT_STAGE,
+  STAGES,
+  extractLeadTypes,
+  splitName,
+  type LeadType,
+  type Stage,
+} from "../contacts";
 import {
   BoldTrailContactDetail,
   BoldTrailListContact,
@@ -27,6 +34,8 @@ export interface MappedContact {
   lead_type: LeadType;
   /** Every role, not just the primary one. */
   deal_types: LeadType[];
+  /** Their lead status, translated. Seeds the stage on insert and nothing after. */
+  stage: Stage;
   source: string | null;
   external_updated_at: string | null;
   /** Only present from the detail endpoint. */
@@ -78,6 +87,27 @@ export const DETAIL_FIELD_MAP = {
 } as const;
 
 /**
+ * Their numeric `status` is an index into BoldTrail's status list, which reads
+ *
+ *   0 New Lead · 1 Prospect · 2 Sphere · 3 Active Lead
+ *   4 Client   · 5 Contract · 6 Closed · 7 Archived
+ *
+ * and is exactly the order of STAGES. This account uses five of the eight —
+ * 0, 1, 3, 4 and 7 — but all eight are mapped, because a status Steven has
+ * never used yet is not a status that cannot appear tomorrow.
+ *
+ * An unrecognised code falls back to the default stage rather than throwing or
+ * guessing at a neighbour. If they add a ninth status, several hundred contacts
+ * reading "New Lead" is a visible, harmless wrong; silently filing them under
+ * "Closed" would not be.
+ */
+export function stageFromStatus(value: unknown): Stage {
+  const code = num(value);
+  if (code === null || !Number.isInteger(code)) return DEFAULT_STAGE;
+  return STAGES[code]?.value ?? DEFAULT_STAGE;
+}
+
+/**
  * Their four phone fields, in the order a person would actually be reached.
  * Mobile first — this is a CRM for calling people back.
  */
@@ -119,6 +149,10 @@ export function fromListContact(record: BoldTrailListContact): MappedContact | n
     email,
     phone: pickPhone(record),
     ...pickRoles(record),
+    // Present on the cheap list as well as the detail record, so a contact is
+    // filed under the right status the moment it arrives — no detail fetch, no
+    // 978 rows parked in "New Lead" waiting for one.
+    stage: stageFromStatus(record.status),
     source: str(record.source) ?? "boldtrail",
     external_updated_at: timestamp(record.updated_at),
   };
@@ -128,10 +162,6 @@ export function fromListContact(record: BoldTrailListContact): MappedContact | n
  * The 83-field record. Everything the list gave, plus the fields worth having
  * their own column — the same six the CSV importer promotes, so a contact looks
  * identical whether it arrived by file or by API.
- *
- * Their numeric `status` is deliberately NOT read. The codes (1, 3, 4, 7) have
- * no confirmed meaning, and guessing would silently mis-stage hundreds of
- * leads — far worse than leaving the stage alone.
  */
 export function fromDetailContact(record: BoldTrailContactDetail): MappedContact | null {
   const base = fromListContact(record);

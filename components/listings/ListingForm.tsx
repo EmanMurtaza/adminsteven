@@ -25,7 +25,7 @@ const labelClass =
   "block text-xs font-medium uppercase tracking-wider text-ink-soft mb-2";
 
 // Hard per-image size cap. Must match the bucket's file_size_limit set in
-// supabase/create_property_images_bucket.sql (5 MB). This client check just
+// supabase/setup.sql, on the property-images bucket (5 MB). This client check just
 // gives instant feedback; Storage enforces the real limit server-side.
 const MAX_IMAGE_MB = 5;
 const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;

@@ -88,8 +88,8 @@ export const FIELD_SYNC_POLICY: FieldPolicy[] = [
   {
     field: "stage",
     label: "Stage",
-    direction: "local_only",
-    note: "Your pipeline, and only yours. BoldTrail has no pipeline to sync with — there is no deals or opportunities endpoint at all — so moving a card here changes nothing there.",
+    direction: "pull_only",
+    note: "Set from BoldTrail's lead status when a contact first arrives — New Lead, Prospect, Sphere, Active Lead, Client, Contract, Closed or Archived. After that the pipeline is yours: moving a card is never overwritten by a later sync, and never sent back to BoldTrail either.",
   },
   {
     field: "next_follow_up",

@@ -89,7 +89,7 @@ create policy "Public read published campaigns"
   using (status = 'published');
 ```
 
-Source of truth: [`create_campaigns.sql`](./create_campaigns.sql) (same
+Source of truth: [`setup.sql`](./setup.sql), section 7 (same
 content — this doc just explains it).
 
 ## 2. Run the storage bucket migration
@@ -134,7 +134,7 @@ create policy "campaign-media authenticated delete"
   using ( bucket_id = 'campaign-media' );
 ```
 
-Source of truth: [`create_campaign_media_bucket.sql`](./create_campaign_media_bucket.sql).
+Source of truth: [`setup.sql`](./setup.sql), section 9.
 
 ## 3. Verify
 

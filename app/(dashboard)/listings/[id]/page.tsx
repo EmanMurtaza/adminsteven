@@ -4,7 +4,7 @@ import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { getListingById, markListingSold } from "@/lib/listings";
 import { formatDate, formatDateTime, formatNumber, formatPrice } from "@/lib/format";
 import { listingStatusLabel, salesChannelLabel } from "@/lib/types";
-import { contactName } from "@/lib/contacts";
+import { CLOSED_STAGES, contactName, type Stage } from "@/lib/contacts";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -120,7 +120,9 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
       .map((r) => r.contacts)
       .filter((c): c is NonNullable<Row["contacts"]> => Boolean(c))
       // Leave finished leads finished, and leave existing dates alone.
-      .filter((c) => c.next_follow_up === null && c.stage !== "closed" && c.stage !== "lost");
+      .filter(
+        (c) => c.next_follow_up === null && !CLOSED_STAGES.includes(c.stage as Stage)
+      );
 
     if (due.length === 0) return { scheduled: 0 };
 

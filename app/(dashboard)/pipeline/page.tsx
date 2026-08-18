@@ -118,7 +118,7 @@ export default async function PipelinePage({
               <p className="text-sm text-ink-soft">
                 Apply{" "}
                 <code className="bg-cream-200 px-1.5 py-0.5 rounded text-xs">
-                  supabase/create_contacts_crm.sql
+                  supabase/setup.sql
                 </code>{" "}
                 in the Supabase SQL editor first.
               </p>

@@ -3,7 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CalendarClock, Mail, Phone } from "lucide-react";
-import { Contact, STAGES, Stage, contactName, leadTypeLabel } from "@/lib/contacts";
+import {
+  Contact,
+  DEFAULT_STAGE,
+  STAGES,
+  Stage,
+  allRoles,
+  contactName,
+  leadTypeLabel,
+} from "@/lib/contacts";
 
 interface Props {
   contacts: Contact[];
@@ -30,7 +38,7 @@ function groupByStage(contacts: Contact[]): Record<Stage, Contact[]> {
     Contact[]
   >;
   for (const c of contacts) {
-    (grouped[c.stage] ?? grouped.new).push(c);
+    (grouped[c.stage] ?? grouped[DEFAULT_STAGE]).push(c);
   }
   return grouped;
 }
@@ -142,14 +150,20 @@ export default function PipelineBoard({ contacts, onMove }: Props) {
                     >
                       {contactName(c)}
                     </Link>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span
-                        className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                          typeStyles[c.lead_type] ?? typeStyles.unknown
-                        }`}
-                      >
-                        {leadTypeLabel(c.lead_type)}
-                      </span>
+                    {/* Every role, not just the primary. A card reading only
+                        "Buyer" for someone who is also selling is how you walk
+                        into a call with half the picture. */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      {allRoles(c).map((role) => (
+                        <span
+                          key={role}
+                          className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+                            typeStyles[role] ?? typeStyles.unknown
+                          }`}
+                        >
+                          {leadTypeLabel(role)}
+                        </span>
+                      ))}
                       {c.source && (
                         <span className="text-[10px] text-ink-mute truncate">{c.source}</span>
                       )}

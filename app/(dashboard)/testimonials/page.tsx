@@ -82,7 +82,7 @@ export default async function TestimonialsPage({
             <p className="text-sm text-ink-soft">
               If this is the first run, apply{" "}
               <code className="bg-cream-200 px-1.5 py-0.5 rounded text-xs">
-                supabase/create_testimonials.sql
+                supabase/setup.sql
               </code>{" "}
               in the Supabase SQL editor.
             </p>

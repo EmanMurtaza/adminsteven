@@ -22,7 +22,7 @@ const inputClass =
 
 const labelClass = "block text-xs font-medium uppercase tracking-wider text-ink-soft mb-2";
 
-// Must match the bucket's file_size_limit in supabase/create_campaign_media_bucket.sql.
+// Must match the campaign-media bucket's file_size_limit in supabase/setup.sql.
 const MAX_MEDIA_MB = 25;
 const MAX_MEDIA_BYTES = MAX_MEDIA_MB * 1024 * 1024;
 const MEDIA_BUCKET = "campaign-media";

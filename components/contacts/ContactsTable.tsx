@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { Trash2, ChevronDown, Mail, Phone, CalendarClock, Check } from "lucide-react";
-import { Contact, LEAD_TYPES, STAGES, contactName, leadTypeLabel } from "@/lib/contacts";
+import {
+  Contact,
+  LEAD_TYPES,
+  STAGES,
+  contactName,
+  leadTypeLabel,
+  secondaryRoles,
+} from "@/lib/contacts";
 import { formatDate } from "@/lib/format";
 import RawDetails from "./RawDetails";
 import ExternalNotes from "./ExternalNotes";
@@ -13,13 +20,16 @@ interface Props {
   onDelete?: (id: string) => Promise<{ error?: string }>;
 }
 
+// Warm for a lead being worked, cool for one parked, grey once it is finished.
 const stageStyles: Record<string, string> = {
-  new: "bg-gold/15 text-gold-dark border border-gold/40",
-  contacted: "bg-navy/10 text-navy border border-navy/25",
-  qualified: "bg-navy/10 text-navy border border-navy/25",
-  active: "bg-gold/25 text-gold-dark border border-gold/60",
+  new_lead: "bg-gold/15 text-gold-dark border border-gold/40",
+  prospect: "bg-navy/10 text-navy border border-navy/25",
+  sphere: "bg-navy/10 text-navy border border-navy/25",
+  active_lead: "bg-gold/25 text-gold-dark border border-gold/60",
+  client: "bg-gold/25 text-gold-dark border border-gold/60",
+  contract: "bg-navy/15 text-navy border border-navy/40",
   closed: "bg-cream-200 text-ink-soft border border-ink-mute/30",
-  lost: "bg-cream-200 text-ink-mute border border-ink-mute/20",
+  archived: "bg-cream-200 text-ink-mute border border-ink-mute/20",
 };
 
 const typeStyles: Record<string, string> = {
@@ -99,7 +109,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
             <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-ink-mute">
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 font-medium">Contact</th>
-              <th className="px-4 py-3 font-medium w-[120px]">Type</th>
+              <th className="px-4 py-3 font-medium w-[150px]">Type</th>
               <th className="px-4 py-3 font-medium w-[130px]">Stage</th>
               <th className="px-4 py-3 font-medium w-[150px]">Follow up</th>
               <th className="px-4 py-3 font-medium text-right w-[90px]">Actions</th>
@@ -163,6 +173,25 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                           <option key={t.value} value={t.value}>{t.label}</option>
                         ))}
                       </select>
+                      {/* The select can only hold one value, but most contacts
+                          here are several things at once — 649 are buyer,
+                          seller and renter together. The extras are read-only
+                          because they are BoldTrail's, not ours to edit; the
+                          select above changes which one leads. */}
+                      {secondaryRoles(c).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {secondaryRoles(c).map((role) => (
+                            <span
+                              key={role}
+                              className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                typeStyles[role] ?? typeStyles.unknown
+                              }`}
+                            >
+                              {leadTypeLabel(role)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
 
                     <td className="px-4 py-3">
@@ -199,7 +228,9 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                           onClick={() =>
                             patch(c.id, {
                               last_contacted_at: new Date().toISOString(),
-                              stage: c.stage === "new" ? "contacted" : c.stage,
+                              // First contact promotes a brand-new lead once,
+                              // and never moves it again.
+                              stage: c.stage === "new_lead" ? "prospect" : c.stage,
                             })
                           }
                           disabled={pending === c.id}
@@ -240,18 +271,6 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                             {/* Where they are and what they want, first —
                                 these are what you actually need when the phone
                                 is ringing. */}
-                            {/* The Type column can only show one role. When
-                                BoldTrail says someone is a buyer AND a seller,
-                                dropping the rest would lose the point. */}
-                            {c.deal_types?.length > 1 && (
-                              <Row
-                                label="Also"
-                                value={c.deal_types
-                                  .filter((t) => t !== c.lead_type)
-                                  .map(leadTypeLabel)
-                                  .join(", ")}
-                              />
-                            )}
                             {locationOf(c) && <Row label="Location" value={locationOf(c)!} />}
                             {lookingFor(c) && <Row label="Looking for" value={lookingFor(c)!} />}
                             {c.company && (

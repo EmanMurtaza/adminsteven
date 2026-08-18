@@ -40,6 +40,15 @@ function dailyTrend(timestamps: (string | null)[], days: number): { date: string
 export interface PipelineAnalytics {
   totalContacts: number;
   byStage: { stage: Stage; label: string; count: number }[];
+  /**
+   * How many contacts hold each role IN ANY CAPACITY, so the buckets overlap and
+   * deliberately sum to more than `totalContacts`.
+   *
+   * Counting `lead_type` instead would report 8 sellers in an account with 658
+   * of them — a contact who is buying and selling has one primary role and is
+   * still a seller. It would also disagree with the contacts list, whose Type
+   * filter has always matched on `deal_types`.
+   */
   byLeadType: { type: LeadType; label: string; count: number }[];
   bySource: { source: string; count: number }[];
   newLast7Days: number;
@@ -76,10 +85,15 @@ export async function getPipelineAnalytics(
     ),
     Promise.all(
       LEAD_TYPES.map(async (t) => {
-        const { count } = await supabase
-          .from("contacts")
-          .select("*", { count: "exact", head: true })
-          .eq("lead_type", t.value);
+        // `contains`, not `eq` on lead_type — the same predicate the contacts
+        // list uses, so the chart and the filter cannot disagree. 'unknown' is
+        // never written into deal_types (an empty array is), so it is counted
+        // as the absence of any role rather than as a role.
+        const query = supabase.from("contacts").select("*", { count: "exact", head: true });
+        const { count } =
+          t.value === "unknown"
+            ? await query.eq("deal_types", "{}")
+            : await query.contains("deal_types", [t.value]);
         return { type: t.value, label: t.label, count: count ?? 0 };
       })
     ),
@@ -104,9 +118,10 @@ export async function getPipelineAnalytics(
       .range(0, SOURCE_SAMPLE_CAP),
   ]);
 
+  // "Decided" is every lead no longer being worked, whichever way it went.
   const closed = byStage.find((s) => s.stage === "closed")?.count ?? 0;
-  const lost = byStage.find((s) => s.stage === "lost")?.count ?? 0;
-  const decided = closed + lost;
+  const archived = byStage.find((s) => s.stage === "archived")?.count ?? 0;
+  const decided = closed + archived;
 
   const sourceCounts = new Map<string, number>();
   for (const row of sourceRows ?? []) {

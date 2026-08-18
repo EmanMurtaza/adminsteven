@@ -78,7 +78,7 @@ export default async function CampaignsPage({
               <p className="text-sm text-ink-soft">
                 If this is the first run, the table does not exist yet — apply{" "}
                 <code className="bg-cream-200 px-1.5 py-0.5 rounded text-xs">
-                  supabase/create_campaigns.sql
+                  supabase/setup.sql
                 </code>{" "}
                 in the Supabase SQL editor.
               </p>

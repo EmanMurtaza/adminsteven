@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserPlus, X } from "lucide-react";
-import { LEAD_TYPES, STAGES, LeadType, Stage } from "@/lib/contacts";
+import { DEFAULT_STAGE, LEAD_TYPES, STAGES, LeadType, Stage } from "@/lib/contacts";
 
 export interface NewContactInput {
   first_name: string;
@@ -26,7 +26,7 @@ const EMPTY: NewContactInput = {
   email: "",
   phone: "",
   lead_type: "unknown",
-  stage: "new",
+  stage: DEFAULT_STAGE,
   source: "manual",
   notes: "",
 };

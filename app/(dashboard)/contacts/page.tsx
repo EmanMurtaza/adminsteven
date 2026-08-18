@@ -11,7 +11,7 @@ import {
   queryString,
 } from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
-import { Contact, LEAD_TYPES, STAGES } from "@/lib/contacts";
+import { Contact, DEFAULT_STAGE, LEAD_TYPES, STAGES } from "@/lib/contacts";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -124,7 +124,7 @@ export default async function ContactsPage({
               <p className="text-sm text-ink-soft">
                 If this is the first run, the table does not exist yet — apply{" "}
                 <code className="bg-cream-200 px-1.5 py-0.5 rounded text-xs">
-                  supabase/create_contacts_crm.sql
+                  supabase/setup.sql
                 </code>{" "}
                 in the Supabase SQL editor.
               </p>
@@ -233,7 +233,7 @@ export default async function ContactsPage({
           phone: s.phone || null,
           lead_type: roles[0] ?? "unknown",
           deal_types: roles,
-          stage: "new",
+          stage: DEFAULT_STAGE,
           source: "website",
           submission_id: s.id,
         };

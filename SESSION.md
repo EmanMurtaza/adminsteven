@@ -127,17 +127,24 @@ Top tags: `investor` (391), `crexi` (371), `vikings` (256), `housejet` (100),
 
 ## Migrations
 
-Applied: `add_contact_enrichment`, `create_contact_listings`,
-`add_boldtrail_sync`, `add_contact_details`, `update_lead_types`,
-`add_external_notes`, `extend_contact_submissions_for_inquiries`,
-`create_campaign_media_bucket`.
+**There is now one file: `supabase/setup.sql`.** Paste it into the Supabase SQL
+editor and run it. It is idempotent, so it can be re-run any time, and it is the
+only thing that ever needs running.
 
-**Not applied — `supabase/create_campaigns.sql`.** It renames `image_url` to
-`media_url` and adds `media_type`. Until it runs, `/api/campaigns` returns
-**500** in production (`column campaigns.media_url does not exist`). This came
-from commit `a7e11c1`, not from the sync work. Note that
-`create_campaign_media_bucket.sql` is a *different* file — it creates the storage
-bucket, not the columns.
+The fourteen separate migration files it replaces have been deleted. They had to
+be applied in the right order by hand, and by the eighth of them "which of these
+has actually run on production" was no longer answerable from the repository —
+which is how `/api/campaigns` came to return **500** in production for weeks with
+the fix sitting unapplied in the repo the whole time. That fix (the `image_url`
+→ `media_url` rename, from commit `a7e11c1`) is now section 7 of `setup.sql`, so
+running the file clears it.
+
+Only two other files remain in `supabase/`: `schema.sql`, which documents the
+tables shared with the main website and is not runnable, and
+`CAMPAIGNS_SETUP.md`. The old `blog_posts` → `blogs` migration was deleted rather
+than folded in — it ended in `DROP TABLE`, it has already run, and a destructive
+one-shot has no place in a file whose whole promise is that re-running it is
+safe. It is in git history if it is ever wanted.
 
 ---
 
@@ -175,24 +182,113 @@ Vercel production env vars: `BOLDTRAIL_API_TOKEN`, `BOLDTRAIL_API_BASE`,
 
 ---
 
+## Lead status — resolved
+
+Their `status` is an index into BoldTrail's own status list, and the panel's
+pipeline now uses that vocabulary instead of the invented
+new/contacted/qualified/active/closed/lost:
+
+| | | | |
+|---|---|---|---|
+| `0` New Lead | `1` Prospect | `2` Sphere | `3` Active Lead |
+| `4` Client | `5` Contract | `6` Closed | `7` Archived |
+
+This account uses five: **0** (109), **1** (13), **3** (638), **4** (27),
+**7** (191). All eight are mapped anyway — a status Steven has not used yet is
+not one that cannot appear tomorrow.
+
+The order is load-bearing in three places at once: `STAGES` in `lib/contacts.ts`,
+`stageFromStatus` in `lib/boldtrail/mapping.ts`, and the CHECK constraint in
+`setup.sql`. Inserting a stage in the middle would silently re-label hundreds of
+contacts, so a new one goes on the end.
+
+BoldTrail decides where a contact *starts* and nothing more. `stage` is in
+`INSERT_COLUMNS` but deliberately not in `UPDATE_COLUMNS`, so a later pull never
+moves a card Steven has moved, and it is never pushed back either — there is
+still no deals object to push it to. The 978 already-imported contacts are
+corrected by the back-fill in `setup.sql` section 2d, which reads the stored
+payload and costs no API calls; `remapStoredDetails` applies the same rule for
+any future mapping change.
+
+---
+
+## Multiple types per contact — now shown, not just stored
+
+`deal_types` has held every role since the sync was built, but almost nothing
+*displayed* it: the Type column, the pipeline card and the analytics chart all
+read the single `lead_type`. In this account that hides most of the answer.
+
+| Roles held | Contacts |
+|---|---|
+| three (all `buyer+seller+renter`) | 649 |
+| one | 238 |
+| none | 93 |
+| two | 4 |
+
+**Two thirds of the list is multi-role**, and 649 contacts were rendering as
+plain "Buyer". Per role in any capacity: buyer 876, seller 658, renter 649,
+vendor 5, agent 4.
+
+Fixed in the four places a type is shown, off two new helpers in
+`lib/contacts.ts` — `allRoles` (primary first) and `secondaryRoles`:
+
+- **Contacts table** — the `lead_type` select stays editable and the extra roles
+  sit under it as read-only chips. They are BoldTrail's; the select changes
+  which one leads. The old "Also" row in the expand panel is gone, now duplicated.
+- **Pipeline card** — every role as a badge instead of just the primary.
+- **CSV import preview** — shows what will actually be stored, so a
+  "Buyer & Seller" column is visible as both before the import is committed.
+- **Analytics "Lead type"** — was counting `lead_type` with `eq`, so it reported
+  **8** sellers in an account with **658**, and disagreed with the contacts list,
+  whose Type filter has always matched on `deal_types`. Now `contains`, like the
+  filter.
+
+That last one also changed the chart: **a pie became bars.** Roles overlap and
+sum to 2,192 across 984 contacts, so slices claiming to be parts of a whole were
+misrepresenting the data whatever numbers fed them. Each bar is read against the
+contact total instead, with a line saying the buckets overlap.
+
+`lead_type` still exists and is still single — the pipeline board, badges and
+sort order need one value to group by. It is the first role by precedence
+(buyer > seller > renter > vendor > agent), not the only one.
+
+## What BoldTrail will not give us
+
+Of the columns their web UI shows, seven have no source in the API on this token.
+Established by probing, not assumed:
+
+| Column | Why not |
+|---|---|
+| Calls | `/contact/{id}/action/call` → **401**, outside the token's scope |
+| Emails | `/contact/{id}/action/email` → **404** |
+| Texts | `/contact/{id}/action/text` → **404** |
+| Latest Comm | no such field in the 83; `last_call` exists but is set on only 32 |
+| Pond, Interest, Next Action | absent from the payload, and no endpoint serves them |
+
+Those counters are aggregates computed inside their UI. Everything else on that
+list — first/last name, phone, status, type, last visit, hashtags, rating,
+location, created, source, owned by — is read and stored.
+
+Two caveats on what "read" means here: **Location** is filled for only 19 of 978
+contacts and **Last Visit** for 16, because those fields are empty in BoldTrail
+itself. And **Owned By** is a single agent UUID across all 978 — their API never
+returns a display name for it.
+
+---
+
 ## Outstanding
 
-1. **Their `status` codes are unmapped**, so all 978 contacts sit in "New".
-   Five values exist. Open these in BoldTrail and read the label shown:
-   `0` → `139074352` · `1` → `144070736` · `3` → `138961831` ·
-   `4` → `139258726` · `7` → `144048891`.
-2. **Run `supabase/create_campaigns.sql`** — `/api/campaigns` is 500 in
-   production until it does.
-3. **A test contact needs deleting by hand:** id `145355642`
+1. **A test contact needs deleting by hand:** id `145355642`
    (`boldtrail-probe+…@stevenmoning.invalid`), created by the write probe.
    `DELETE` is not in the token's scope, so it cannot be removed via the API.
-4. **Rotate the Atlas credential.** A credential string sat in the committed
+2. **Rotate the Atlas credential.** A credential string sat in the committed
    `.env.local.example` from `0fe8c8e` onwards, in a public repo. It has been
    replaced with a placeholder, but removing it now does not unpublish it — it
    remains in git history.
-5. **Tags/notes write-back is disabled.** `PUT` on both returned **422** — the
+3. **Tags/notes write-back is disabled.** `PUT` on both returned **422** — the
    right endpoint with the wrong body shape. Working it out needs live calls.
-6. **Pipeline cannot round-trip.** BoldTrail has no deals or opportunities
-   object at all, so `stage`, `next_follow_up`, `last_contacted_at` and `notes`
-   are panel-only. The UI states this, rendered from `FIELD_SYNC_POLICY` so the
-   legend cannot drift from the actual behaviour.
+4. **Pipeline cannot round-trip.** BoldTrail has no deals or opportunities
+   object at all. Their lead status seeds `stage` on the way in, but nothing
+   goes back: `stage`, `next_follow_up`, `last_contacted_at` and `notes` are all
+   panel-only from that point on. The UI states this, rendered from
+   `FIELD_SYNC_POLICY` so the legend cannot drift from the actual behaviour.

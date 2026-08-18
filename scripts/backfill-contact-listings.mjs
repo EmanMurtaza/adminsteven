@@ -60,7 +60,7 @@ try {
     if (message.includes("listing_id does not exist")) {
       console.error("FAIL: contact_submissions has no listing_id column yet.");
       console.error("");
-      console.error("Apply supabase/extend_contact_submissions_for_inquiries.sql in the");
+      console.error("Apply supabase/setup.sql in the");
       console.error("Supabase SQL editor first — it adds listing_id, which records which");
       console.error("property each enquiry was about. Without it there is nothing to");
       console.error("backfill from.");

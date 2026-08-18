@@ -20,9 +20,10 @@ export default function SyncFieldLegend() {
       <h2 className="font-serif text-lg text-navy mb-1">What actually syncs</h2>
       <p className="text-sm text-ink-mute mb-5 max-w-2xl leading-relaxed">
         BoldTrail has no pipeline to sync with — no deals, opportunities or
-        tasks exist in their API at all. So your stages, follow-up dates and
-        notes live here and nowhere else. Changing them will not change anything
-        in BoldTrail.
+        tasks exist in their API at all. Their lead status sets where a contact
+        starts, and from then on the pipeline is yours: your stages, follow-up
+        dates and notes live here and nowhere else, and changing them will not
+        change anything in BoldTrail.
       </p>
 
       <ul className="divide-y divide-gold/15">

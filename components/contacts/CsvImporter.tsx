@@ -10,6 +10,7 @@ import {
   ImportPreview,
   Mapping,
   guessMapping,
+  leadTypeLabel,
   previewImport,
 } from "@/lib/contacts";
 
@@ -285,7 +286,15 @@ export default function CsvImporter({ onImport }: Props) {
                         </td>
                         <td className="px-3 py-2 text-ink-soft">{c.email ?? "—"}</td>
                         <td className="px-3 py-2 text-ink-soft">{c.phone ?? "—"}</td>
-                        <td className="px-3 py-2 text-ink-soft">{c.lead_type}</td>
+                        {/* A CSV column like "Buyer & Seller" produces several
+                            roles, so the preview shows what will actually be
+                            stored rather than only the one that leads. */}
+                        <td className="px-3 py-2 text-ink-soft">
+                          {(c.deal_types?.length ? c.deal_types : [c.lead_type])
+                            .filter(Boolean)
+                            .map((t) => leadTypeLabel(t as string))
+                            .join(", ") || "—"}
+                        </td>
                         <td className="px-3 py-2 text-ink-soft">{c.stage}</td>
                       </tr>
                     ))}

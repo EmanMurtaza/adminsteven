@@ -12,9 +12,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Cell,
-  PieChart,
-  Pie,
   AreaChart,
   Area,
   RadialBarChart,
@@ -186,9 +183,17 @@ export default function AnalyticsCharts({ pipeline, inquiries, listings, recentL
     fill: GOLD_DARK,
   }));
 
-  const leadTypeData = pipeline.byLeadType
+  // Bars, not a pie. Roles overlap — two thirds of this account is buyer,
+  // seller and renter at once — so the counts sum to well over the number of
+  // contacts. Slices of a pie claim to be parts of a whole, which these are not;
+  // each bar is read against the total instead.
+  const leadTypeRows = pipeline.byLeadType
     .filter((t) => t.count > 0)
-    .map((t) => ({ name: t.label, value: t.count }));
+    .map((t, i) => ({
+      label: t.label,
+      count: t.count,
+      fill: PIE_COLORS[i % PIE_COLORS.length],
+    }));
 
   const trendData = inquiries.trend.map((p) => ({ ...p, label: formatShortDate(p.date) }));
 
@@ -273,40 +278,15 @@ export default function AnalyticsCharts({ pipeline, inquiries, listings, recentL
       {/* Lead type split */}
       <div className={cardClass}>
         <PanelTitle>Lead type</PanelTitle>
-        {leadTypeData.length === 0 ? (
+        {leadTypeRows.length === 0 ? (
           <EmptyNote>Nothing to break down yet.</EmptyNote>
         ) : (
-          <div className="flex-1 flex items-center gap-3">
-            <ResponsiveContainer width="55%" height={120}>
-              <PieChart>
-                <Pie
-                  data={leadTypeData}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={32}
-                  outerRadius={54}
-                  paddingAngle={2}
-                >
-                  {leadTypeData.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-1 text-[11px] flex-1 min-w-0">
-              {leadTypeData.map((d, i) => (
-                <div key={d.name} className="flex items-center gap-1.5 truncate">
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
-                  />
-                  <span className="text-ink-soft truncate">{d.name}</span>
-                  <span className="text-navy font-medium ml-auto">{d.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <>
+            <p className="text-[11px] text-ink-mute mb-2 -mt-1">
+              Contacts can hold several roles, so these overlap.
+            </p>
+            <ProgressRows rows={leadTypeRows} total={pipeline.totalContacts} />
+          </>
         )}
       </div>
 

@@ -5,16 +5,34 @@
 // or typed in by hand. Whichever way, they land in `contacts` and are worked
 // through the same pipeline.
 
+// BoldTrail's own status vocabulary, for the same reason LEAD_TYPES below uses
+// theirs: the original list (new/contacted/qualified/active/closed/lost) was
+// invented before there was anything to match it against, and every contact
+// pulled from BoldTrail landed on "new" because their `status` had nowhere to
+// go. All 978 of them sat there, which is not a pipeline, it is a pile.
+//
+// Order is the order BoldTrail lists them in, and it is load-bearing: their
+// `status` is a numeric code that indexes into exactly this sequence. Inserting
+// a stage in the middle would silently re-label hundreds of contacts, so a new
+// stage goes on the end or the mapping in boldtrail/mapping.ts changes with it.
 export const STAGES = [
-  { value: "new", label: "New" },
-  { value: "contacted", label: "Contacted" },
-  { value: "qualified", label: "Qualified" },
-  { value: "active", label: "Active" },
+  { value: "new_lead", label: "New Lead" },
+  { value: "prospect", label: "Prospect" },
+  { value: "sphere", label: "Sphere" },
+  { value: "active_lead", label: "Active Lead" },
+  { value: "client", label: "Client" },
+  { value: "contract", label: "Contract" },
   { value: "closed", label: "Closed" },
-  { value: "lost", label: "Lost" },
+  { value: "archived", label: "Archived" },
 ] as const;
 
 export type Stage = (typeof STAGES)[number]["value"];
+
+/** The stage a contact starts in, here and in BoldTrail alike. */
+export const DEFAULT_STAGE: Stage = "new_lead";
+
+/** Stages that mean "no longer being worked", so nothing should chase them. */
+export const CLOSED_STAGES: Stage[] = ["closed", "archived"];
 
 // BoldTrail's own vocabulary, deliberately. Importing into an invented list
 // meant "vendor" and "agent" became "unknown" and every multi-role contact
@@ -73,7 +91,7 @@ export interface Contact {
 
   // Promoted out of a BoldTrail export because Steven needs to act on them —
   // everything else from that file stays in `raw`. See
-  // supabase/add_contact_enrichment.sql for why these six.
+  // supabase/setup.sql section 2a for why these six.
   rating: number | null;
   /** False means do not email. The campaigns feature must respect this. */
   email_opt_in: boolean | null;
@@ -84,7 +102,7 @@ export interface Contact {
   homeowner_status: string | null;
 
   // Where they are, who they are, and what they are looking for. See
-  // supabase/add_contact_details.sql.
+  // supabase/setup.sql section 2a.
   address: string | null;
   city: string | null;
   state: string | null;
@@ -138,6 +156,35 @@ export function stageLabel(stage: string): string {
 
 export function leadTypeLabel(type: string): string {
   return LEAD_TYPES.find((t) => t.value === type)?.label ?? type;
+}
+
+/**
+ * Every role a contact holds, primary first.
+ *
+ * `lead_type` is a single value so the pipeline board, filters and badges have
+ * something to group by, but in this account it is the minority of the answer:
+ * two thirds of contacts hold more than one role, and 649 of them are buyer,
+ * seller AND renter at once. Showing only `lead_type` labels all 649 of those
+ * "Buyer" and silently drops the rest, which is the same detail loss that
+ * `deal_types` was added to prevent — so anything that displays a type should
+ * display this instead.
+ *
+ * `deal_types` is empty for contacts that predate it, and for the 93 with no
+ * deal type in BoldTrail at all, so `lead_type` is the fallback rather than an
+ * assumption that the array is populated.
+ */
+export function allRoles(c: Pick<Contact, "lead_type" | "deal_types">): string[] {
+  const roles = c.deal_types ?? [];
+  if (roles.length === 0) return [c.lead_type];
+  // Primary first, then the others in BoldTrail's precedence order. `lead_type`
+  // is normally roles[0], but a contact whose primary was changed by hand is
+  // exactly the case where the order would otherwise be wrong.
+  return [c.lead_type, ...roles.filter((t) => t !== c.lead_type)];
+}
+
+/** The roles beyond the primary — what a single-value Type column cannot show. */
+export function secondaryRoles(c: Pick<Contact, "lead_type" | "deal_types">): string[] {
+  return (c.deal_types ?? []).filter((t) => t !== c.lead_type);
 }
 
 // ─── CSV import mapping ──────────────────────────────────────────────────────
@@ -272,16 +319,32 @@ export function normalizeLeadType(value: string): LeadType {
 
 export function normalizeStage(value: string): Stage {
   const v = value.trim().toLowerCase();
-  if (!v) return "new";
+  if (!v) return DEFAULT_STAGE;
   const direct = STAGES.find((s) => s.value === v || s.label.toLowerCase() === v);
   if (direct) return direct.value;
-  // Common vocabulary from other systems.
-  if (v.includes("won") || v.includes("closed")) return "closed";
-  if (v.includes("lost") || v.includes("dead") || v.includes("unqualified")) return "lost";
-  if (v.includes("qualif")) return "qualified";
-  if (v.includes("active") || v.includes("working") || v.includes("hot")) return "active";
-  if (v.includes("contact") || v.includes("attempt")) return "contacted";
-  return "new";
+
+  // A spreadsheet may spell a stage with a space or a hyphen where the stored
+  // value has an underscore — "active lead" and "New-Lead" both belong.
+  const slug = v.replace(/[\s-]+/g, "_");
+  const bySlug = STAGES.find((s) => s.value === slug);
+  if (bySlug) return bySlug.value;
+
+  // Vocabulary from other systems, and from this app before it adopted
+  // BoldTrail's. Ordered most specific first: "under contract" contains
+  // "contract" but also nothing else that would mis-fire, whereas a bare
+  // "closed won" must not be read as "contract".
+  if (v.includes("archiv") || v.includes("dead") || v.includes("lost")) return "archived";
+  if (v.includes("won") || v.includes("closed") || v.includes("settled")) return "closed";
+  if (v.includes("contract") || v.includes("pending") || v.includes("escrow")) return "contract";
+  if (v.includes("client") || v.includes("customer")) return "client";
+  if (v.includes("sphere") || v.includes("past") || v.includes("referral")) return "sphere";
+  // "qualified", "active", "working" and "hot" were all separate stages in the
+  // old list; they are all the same thing here — a lead being actively worked.
+  if (v.includes("active") || v.includes("qualif") || v.includes("working") || v.includes("hot")) {
+    return "active_lead";
+  }
+  if (v.includes("prospect") || v.includes("contact") || v.includes("attempt")) return "prospect";
+  return DEFAULT_STAGE;
 }
 
 /** 0-5, to match the CHECK constraint. Anything unparseable is left unset. */

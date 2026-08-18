@@ -25,7 +25,11 @@ export interface BoldTrailListContact {
   cell_phone_2?: string | null;
   home_phone?: string | null;
   work_phone?: string | null;
-  /** Numeric code. Observed: 1, 3, 4, 7. Meaning not yet established. */
+  /**
+   * Lead status as an index into BoldTrail's own list — 0 New Lead, 1 Prospect,
+   * 2 Sphere, 3 Active Lead, 4 Client, 5 Contract, 6 Closed, 7 Archived.
+   * This account uses 0, 1, 3, 4 and 7. See stageFromStatus in ./mapping.
+   */
   status?: number | null;
   source?: string | null;
   /** An array, not a string — e.g. buyer/seller flags. */

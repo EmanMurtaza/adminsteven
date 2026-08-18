@@ -12,6 +12,7 @@ import {
   tokenFingerprint,
 } from "./client";
 import { fromDetailContact, fromListContact, type MappedContact } from "./mapping";
+import { DEFAULT_STAGE } from "../contacts";
 import { localFingerprint, remoteFingerprint } from "./hash";
 import {
   getLockedUntil,
@@ -397,9 +398,11 @@ async function runPull(
         phone: contact.phone,
         lead_type: contact.lead_type,
         deal_types: contact.deal_types,
-        // Their numeric status has no confirmed meaning, so every contact
-        // starts at the beginning of OUR pipeline rather than a guess.
-        stage: "new",
+        // Seeded from their status, then ours. `stage` is in INSERT_COLUMNS but
+        // deliberately NOT in UPDATE_COLUMNS below: BoldTrail decides where a
+        // contact starts, and every move after that is Steven's and is never
+        // overwritten by a later pull.
+        stage: contact.stage,
         source: contact.source,
         external_source: PROVIDER,
         external_id: contact.external_id,
@@ -591,13 +594,17 @@ export async function remapStoredDetails(
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id, external_raw")
+      .select("id, stage, external_raw")
       .not("external_id", "is", null)
       .not("external_detail_at", "is", null)
       .range(from, from + PAGE - 1);
 
     if (error) return { scanned, updated, error: error.message };
-    const rows = (data ?? []) as { id: string; external_raw: Record<string, unknown> }[];
+    const rows = (data ?? []) as {
+      id: string;
+      stage: string;
+      external_raw: Record<string, unknown>;
+    }[];
     if (rows.length === 0) break;
 
     const patches: Record<string, unknown>[] = [];
@@ -620,6 +627,13 @@ export async function remapStoredDetails(
         ...detailColumns(mapped),
         lead_type: mapped.lead_type,
         deal_types: mapped.deal_types,
+        // The one field here that is not simply re-derived. A pull seeds `stage`
+        // on insert and never touches it again, so the contacts imported before
+        // their status was understood are all sitting on the default — this is
+        // the only path that can correct them, and it must not undo a move
+        // Steven has since made. A stage still on the default is one nobody has
+        // touched; anything else is his and is left exactly where it is.
+        stage: row.stage === DEFAULT_STAGE ? mapped.stage : row.stage,
       });
     }
 
@@ -629,6 +643,7 @@ export async function remapStoredDetails(
         ...Object.keys(detailColumns({} as MappedContact)),
         "lead_type",
         "deal_types",
+        "stage",
       ];
       const { error: writeError } = await supabase
         .from("contacts")

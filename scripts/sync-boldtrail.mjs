@@ -238,7 +238,7 @@ async function runExtras() {
     if (error && /external_notes/.test(error.message)) {
       if (!notesColumnWarned) {
         console.log("  ! external_notes column missing — importing tags only.");
-        console.log("    Run supabase/add_external_notes.sql, then re-run with --all.\n");
+        console.log("    Run supabase/setup.sql, then re-run with --all.\n");
         notesColumnWarned = true;
       }
       notesSkipped = true;
@@ -269,7 +269,7 @@ async function runExtras() {
     console.log("");
     console.log(`WARNING: those ${withNotes} sets of notes were fetched but NOT saved —`);
     console.log("the external_notes column does not exist yet. Apply");
-    console.log("supabase/add_external_notes.sql, then re-run with --extras --all.");
+    console.log("supabase/setup.sql, then re-run with --extras --all.");
   }
 }
 
