@@ -134,6 +134,7 @@ interface ExistingContact {
   last_name: string | null;
   phone: string | null;
   lead_type: string;
+  deal_types: string[] | null;
   external_id: string | null;
   external_updated_at: string | null;
   remote_hash: string | null;
@@ -142,7 +143,7 @@ interface ExistingContact {
 }
 
 const EXISTING_COLUMNS =
-  "id, email, first_name, last_name, phone, lead_type, external_id, external_updated_at, remote_hash, local_hash, sync_status";
+  "id, email, first_name, last_name, phone, lead_type, deal_types, external_id, external_updated_at, remote_hash, local_hash, sync_status";
 
 /**
  * Every contact, paged. PostgREST caps a response at 1000 rows and truncating
@@ -443,8 +444,22 @@ async function runPull(
       match.local_hash !== null &&
       match.local_hash !== localFingerprint(match as unknown as Record<string, unknown>);
 
+    // Seeded with the values already stored, NOT left partial.
+    //
+    // writeChunked squares every row off against one column list and fills any
+    // key a row is missing with null, because PostgREST rejects a batch whose
+    // objects have differing keys. So a patch that omits first_name does not
+    // mean "leave it alone" — it means "set it to null". Starting from the
+    // current values makes an omission genuinely a no-op, which is what every
+    // branch below assumes.
     const patch: Record<string, unknown> = {
       id: match.id,
+      first_name: match.first_name,
+      last_name: match.last_name,
+      email: match.email,
+      phone: match.phone,
+      lead_type: match.lead_type,
+      deal_types: match.deal_types ?? [],
       external_source: PROVIDER,
       external_id: contact.external_id,
       external_updated_at: contact.external_updated_at,
@@ -460,7 +475,10 @@ async function runPull(
       patch.last_name = adopting ? match.last_name || contact.last_name : contact.last_name ?? match.last_name;
       patch.phone = adopting ? match.phone || contact.phone : contact.phone ?? match.phone;
       patch.email = match.email || contact.email;
+      // Their classification seeds an unclassified contact and is otherwise
+      // left alone, but the full role set is always worth refreshing.
       if (match.lead_type === "unknown") patch.lead_type = contact.lead_type;
+      if (contact.deal_types.length) patch.deal_types = contact.deal_types;
       patch.sync_status = "linked";
     } else {
       // Both sides moved. Keep ours, keep theirs alongside, and flag it rather
