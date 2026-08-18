@@ -3,30 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CalendarClock, Mail, Phone } from "lucide-react";
-import {
-  Contact,
-  DEFAULT_STAGE,
-  STAGES,
-  Stage,
-  allRoles,
-  contactName,
-  leadTypeLabel,
-} from "@/lib/contacts";
+import { Contact, DEFAULT_STAGE, STAGES, Stage, contactName } from "@/lib/contacts";
+import RoleBadges from "@/components/contacts/RoleBadges";
 
 interface Props {
   contacts: Contact[];
   onMove: (id: string, stage: Stage) => Promise<{ error?: string }>;
 }
 
-const typeStyles: Record<string, string> = {
-  buyer: "bg-gold/15 text-gold-dark border-gold/40",
-  seller: "bg-navy/10 text-navy border-navy/25",
-  renter: "bg-navy/10 text-navy border-navy/25",
-  vendor: "bg-navy/10 text-navy border-navy/25",
-  agent: "bg-burgundy/10 text-burgundy border-burgundy/25",
-  both: "bg-gold/15 text-gold-dark border-gold/40",
-  unknown: "bg-cream-200 text-ink-mute border-ink-mute/25",
-};
 
 function todayISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
@@ -154,16 +138,7 @@ export default function PipelineBoard({ contacts, onMove }: Props) {
                         "Buyer" for someone who is also selling is how you walk
                         into a call with half the picture. */}
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                      {allRoles(c).map((role) => (
-                        <span
-                          key={role}
-                          className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                            typeStyles[role] ?? typeStyles.unknown
-                          }`}
-                        >
-                          {leadTypeLabel(role)}
-                        </span>
-                      ))}
+                      <RoleBadges contact={c} />
                       {c.source && (
                         <span className="text-[10px] text-ink-mute truncate">{c.source}</span>
                       )}

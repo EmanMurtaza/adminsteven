@@ -19,6 +19,7 @@ import {
   Kanban,
   Megaphone,
   RefreshCw,
+  GraduationCap,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
@@ -28,6 +29,7 @@ const nav = [
   { label: "Buyers", href: "/inquiries/buyers", icon: Users },
   { label: "Sellers", href: "/inquiries/sellers", icon: Home },
   { label: "Contacts", href: "/contacts", icon: Contact2 },
+  { label: "Alumni", href: "/contacts/alumni", icon: GraduationCap },
   { label: "Pipeline", href: "/pipeline", icon: Kanban },
   { label: "BoldTrail sync", href: "/sync", icon: RefreshCw },
   { label: "Listings", href: "/listings", icon: List },
@@ -41,6 +43,10 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  // The most specific nav href this route sits under — see the active test below.
+  const bestMatch = nav
+    .filter((n) => pathname === n.href || pathname.startsWith(n.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -106,7 +112,10 @@ export default function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
         {nav.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
+          // Longest match wins, so /contacts/alumni lights up Alumni alone
+          // rather than Alumni and Contacts together. A plain startsWith test
+          // makes every nested route highlight two entries at once.
+          const active = href === bestMatch;
           return (
             <Link
               key={href}

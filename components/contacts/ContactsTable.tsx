@@ -11,6 +11,7 @@ import {
   secondaryRoles,
 } from "@/lib/contacts";
 import { formatDate } from "@/lib/format";
+import RoleBadges from "./RoleBadges";
 import RawDetails from "./RawDetails";
 import ExternalNotes from "./ExternalNotes";
 
@@ -32,15 +33,6 @@ const stageStyles: Record<string, string> = {
   archived: "bg-cream-200 text-ink-mute border border-ink-mute/20",
 };
 
-const typeStyles: Record<string, string> = {
-  buyer: "bg-gold/15 text-gold-dark border border-gold/40",
-  seller: "bg-navy/10 text-navy border border-navy/25",
-  renter: "bg-navy/10 text-navy border border-navy/25",
-  vendor: "bg-navy/10 text-navy border border-navy/25",
-  // Agents are not leads — a distinct colour stops them being worked as one.
-  agent: "bg-burgundy/10 text-burgundy border border-burgundy/25",
-  unknown: "bg-cream-200 text-ink-mute border border-ink-mute/25",
-};
 
 const inputClass =
   "w-full bg-cream-100 border border-gold/30 text-navy rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent";
@@ -107,10 +99,21 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
         <table className="w-full text-sm">
           <thead className="bg-cream-100 border-b border-gold/25">
             <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-ink-mute">
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Contact</th>
-              <th className="px-4 py-3 font-medium w-[150px]">Type</th>
-              <th className="px-4 py-3 font-medium w-[130px]">Stage</th>
+              {/* Name is pinned so it stays readable once the row scrolls —
+                  a wide table whose left edge disappears is a table of
+                  anonymous numbers. */}
+              <th className="sticky left-0 z-20 bg-cream-100 px-4 py-3 font-medium min-w-[190px]">
+                Name
+              </th>
+              <th className="px-4 py-3 font-medium min-w-[210px]">Contact</th>
+              <th className="px-4 py-3 font-medium min-w-[150px]">Type</th>
+              <th className="px-4 py-3 font-medium w-[140px]">Stage</th>
+              <th className="px-4 py-3 font-medium w-[90px]">Rating</th>
+              <th className="px-4 py-3 font-medium min-w-[140px]">Location</th>
+              <th className="px-4 py-3 font-medium min-w-[120px]">Source</th>
+              <th className="px-4 py-3 font-medium min-w-[150px]">Hashtags</th>
+              <th className="px-4 py-3 font-medium w-[110px]">Last visit</th>
+              <th className="px-4 py-3 font-medium w-[110px]">Created</th>
               <th className="px-4 py-3 font-medium w-[150px]">Follow up</th>
               <th className="px-4 py-3 font-medium text-right w-[90px]">Actions</th>
             </tr>
@@ -123,11 +126,25 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                 <>
                   <tr
                     key={c.id}
-                    className={`align-middle transition-colors hover:bg-cream-100/60 ${
+                    className={`group align-middle transition-colors hover:bg-cream-100/60 ${
                       due ? "bg-gold/[0.06]" : ""
                     }`}
                   >
-                    <td className="px-4 py-3">
+                    {/* A transparent sticky cell lets the scrolled columns slide
+                        underneath and show through, so this one has to paint an
+                        OPAQUE background of its own — and still match the row's
+                        due/hover tints, which are translucent.
+                        
+                        Hence bg-white for the opaque base plus a flat gradient
+                        for the tint: a gradient is a background-image, so it
+                        layers over the background-color instead of replacing it.
+                        Hard-coding the composited hex would work until someone
+                        changes the gold. */}
+                    <td
+                      className={`sticky left-0 z-10 px-4 py-3 bg-white bg-gradient-to-r transition-colors group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
+                        due ? "from-gold/[0.06] to-gold/[0.06]" : "from-transparent to-transparent"
+                      }`}
+                    >
                       <button
                         onClick={() => setExpanded(open ? null : c.id)}
                         aria-expanded={open}
@@ -161,37 +178,11 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                       </div>
                     </td>
 
+                    {/* Read-only here. Type comes from BoldTrail and changes
+                        rarely; Stage is the thing worked every day, so that one
+                        keeps its inline control and this moves to Details. */}
                     <td className="px-4 py-3">
-                      <select
-                        value={c.lead_type}
-                        onChange={(e) => patch(c.id, { lead_type: e.target.value as Contact["lead_type"] })}
-                        disabled={pending === c.id}
-                        aria-label="Lead type"
-                        className={`${inputClass} ${typeStyles[c.lead_type] ?? ""}`}
-                      >
-                        {LEAD_TYPES.map((t) => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </select>
-                      {/* The select can only hold one value, but most contacts
-                          here are several things at once — 649 are buyer,
-                          seller and renter together. The extras are read-only
-                          because they are BoldTrail's, not ours to edit; the
-                          select above changes which one leads. */}
-                      {secondaryRoles(c).length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {secondaryRoles(c).map((role) => (
-                            <span
-                              key={role}
-                              className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                typeStyles[role] ?? typeStyles.unknown
-                              }`}
-                            >
-                              {leadTypeLabel(role)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <RoleBadges contact={c} />
                     </td>
 
                     <td className="px-4 py-3">
@@ -206,6 +197,33 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                           <option key={s.value} value={s.value}>{s.label}</option>
                         ))}
                       </select>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <Stars rating={c.rating} />
+                    </td>
+
+                    <td className="px-4 py-3 text-xs text-ink-soft">
+                      {locationOf(c) ?? <span className="text-ink-mute">—</span>}
+                    </td>
+
+                    <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
+                      {c.source || <span className="text-ink-mute">—</span>}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <TagList tags={c.tags} />
+                    </td>
+
+                    <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
+                      {c.last_visit_at ? formatDate(c.last_visit_at) : <span className="text-ink-mute">—</span>}
+                    </td>
+
+                    {/* BoldTrail's registered date when there is one — it is
+                        older than our own created_at for anything imported, and
+                        it is the date that answers "how long have we had them". */}
+                    <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
+                      {formatDate(c.first_seen_at ?? c.created_at)}
                     </td>
 
                     <td className="px-4 py-3">
@@ -255,7 +273,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
 
                   {open && (
                     <tr key={`${c.id}-detail`} className="bg-cream-100/50">
-                      <td colSpan={6} className="px-4 py-4">
+                      <td colSpan={12} className="px-4 py-4">
                         <div className="grid md:grid-cols-2 gap-5">
                           <div>
                             <label className="block text-[11px] uppercase tracking-[0.14em] text-ink-mute mb-1.5">
@@ -268,6 +286,38 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                             />
                           </div>
                           <dl className="text-xs space-y-1.5">
+                            {/* Which role leads. The others are BoldTrail's and
+                                are not ours to edit, so only this one is a
+                                control — it decides what the Type column shows
+                                first and what the pipeline groups by. */}
+                            <div className="flex gap-2 items-center pb-1">
+                              <dt className="text-ink-mute shrink-0 w-28">Primary type</dt>
+                              <dd>
+                                <select
+                                  value={c.lead_type}
+                                  onChange={(e) =>
+                                    patch(c.id, {
+                                      lead_type: e.target.value as Contact["lead_type"],
+                                    })
+                                  }
+                                  disabled={pending === c.id}
+                                  aria-label="Primary lead type"
+                                  className="bg-white border border-gold/30 text-navy rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent"
+                                >
+                                  {LEAD_TYPES.map((t) => (
+                                    <option key={t.value} value={t.value}>
+                                      {t.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </dd>
+                            </div>
+                            {secondaryRoles(c).length > 0 && (
+                              <Row
+                                label="Also"
+                                value={secondaryRoles(c).map(leadTypeLabel).join(", ")}
+                              />
+                            )}
                             {/* Where they are and what they want, first —
                                 these are what you actually need when the phone
                                 is ringing. */}
@@ -324,6 +374,54 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/**
+ * BoldTrail's 0-5 star rating.
+ *
+ * Zero is drawn as nothing at all, not as five empty stars. In this account
+ * most contacts sit at 0, and a column of empty outlines reads as "rated badly"
+ * when it means "never rated" — the two are not the same and only one of them
+ * is a reason to skip someone.
+ */
+function Stars({ rating }: { rating: number | null }) {
+  if (!rating || rating < 1) return <span className="text-xs text-ink-mute">—</span>;
+  return (
+    <span
+      className="text-xs text-gold-dark tracking-[0.06em] whitespace-nowrap"
+      title={`${rating} out of 5`}
+      aria-label={`Rated ${rating} out of 5`}
+    >
+      {"★".repeat(Math.min(5, rating))}
+    </span>
+  );
+}
+
+/**
+ * Tags, capped at two with a count for the rest.
+ *
+ * Imports attach batch markers like `import20251007-1985a` alongside the tags
+ * that mean something, and a row that wraps to four lines because of them costs
+ * more than it tells you. The full set is in Details, and the title attribute
+ * carries it on hover.
+ */
+function TagList({ tags }: { tags: string[] }) {
+  if (!tags?.length) return <span className="text-xs text-ink-mute">—</span>;
+  const shown = tags.slice(0, 2);
+  const rest = tags.length - shown.length;
+  return (
+    <div className="flex flex-wrap items-center gap-1" title={tags.join(", ")}>
+      {shown.map((t) => (
+        <span
+          key={t}
+          className="inline-flex items-center rounded px-1.5 py-[3px] text-[10px] font-medium leading-none bg-cream-200 text-ink-soft max-w-[110px] truncate"
+        >
+          {t}
+        </span>
+      ))}
+      {rest > 0 && <span className="text-[10px] text-ink-mute">+{rest}</span>}
     </div>
   );
 }

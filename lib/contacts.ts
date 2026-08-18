@@ -187,6 +187,35 @@ export function secondaryRoles(c: Pick<Contact, "lead_type" | "deal_types">): st
   return (c.deal_types ?? []).filter((t) => t !== c.lead_type);
 }
 
+// ─── Alumni ──────────────────────────────────────────────────────────────────
+
+/**
+ * PostgREST `or()` terms that match an alumni email address.
+ *
+ * 237 contacts in this account are on `alumni.com`, which the first pattern
+ * covers. The second exists because university alumni addresses are normally a
+ * subdomain — `someone@alumni.utexas.edu`, `someone@mail.alumni.ox.ac.uk` — and
+ * a segment defined by one hard-coded domain would quietly miss every one of
+ * them the day a real university address arrives.
+ *
+ * Deliberately NOT a bare `%alumni%`: that matches `alumni@gmail.com` and
+ * `paul.alumni@…`, which are ordinary personal addresses that happen to contain
+ * the word. The `@` and the `.` are what make this a domain test rather than a
+ * substring search.
+ */
+export const ALUMNI_EMAIL_FILTER = [
+  "email.ilike.%@alumni.%",
+  "email.ilike.%.alumni.%",
+].join(",");
+
+/** Whether one contact belongs to the alumni segment. Mirrors the filter above. */
+export function isAlumni(c: Pick<Contact, "email">): boolean {
+  const email = c.email?.toLowerCase() ?? "";
+  const domain = email.split("@")[1];
+  if (!domain) return false;
+  return domain === "alumni" || domain.startsWith("alumni.") || domain.includes(".alumni.");
+}
+
 // ─── CSV import mapping ──────────────────────────────────────────────────────
 
 export interface ImportField {

@@ -276,6 +276,13 @@ export default async function ContactsPage({
             <AddContactModal onCreate={createContact} />
             <ImportWebsiteButton action={importFromWebsite} />
             <Link
+              href="/contacts/alumni"
+              className="border border-gold/40 text-navy hover:bg-cream-100 px-4 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
+            >
+              Alumni
+              <span className="text-gold">›</span>
+            </Link>
+            <Link
               href="/contacts/import"
               className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
             >
