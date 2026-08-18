@@ -42,6 +42,14 @@ export const LEAD_TYPE_PRECEDENCE: LeadType[] = [
   "agent",
 ];
 
+/** One entry from BoldTrail's per-contact note log. */
+export interface ExternalNote {
+  action_id?: number;
+  date?: string;
+  title?: string | null;
+  details?: string | null;
+}
+
 export interface Contact {
   id: string;
   first_name: string | null;
@@ -95,6 +103,13 @@ export interface Contact {
   capture_method: string | null;
   referrer: string | null;
   last_visit_at: string | null;
+
+  /**
+   * BoldTrail's activity log, kept separate from `notes` (which is Steven's own
+   * editable field). Theirs is append-only and mixes real substance with
+   * machine-written entries like "Contact updated by ...".
+   */
+  external_notes: ExternalNote[];
 
   submission_id: string | null;
   raw: Record<string, unknown>;

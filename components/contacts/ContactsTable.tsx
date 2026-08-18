@@ -5,6 +5,7 @@ import { Trash2, ChevronDown, Mail, Phone, CalendarClock, Check } from "lucide-r
 import { Contact, LEAD_TYPES, STAGES, contactName, leadTypeLabel } from "@/lib/contacts";
 import { formatDate } from "@/lib/format";
 import RawDetails from "./RawDetails";
+import ExternalNotes from "./ExternalNotes";
 
 interface Props {
   contacts: Contact[];
@@ -293,6 +294,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                             )}
                           </dl>
                         </div>
+                        <ExternalNotes notes={c.external_notes} />
                         <RawDetails raw={c.raw} />
                       </td>
                     </tr>

@@ -29,8 +29,11 @@ const value = (name, fallback) => {
   return hit ? hit.split("=")[1] : fallback;
 };
 
-if (!flag("enrich")) {
-  console.error("Nothing to do. Pass --enrich (see the header of this file).");
+const DO_ENRICH = flag("enrich");
+const DO_EXTRAS = flag("extras");
+
+if (!DO_ENRICH && !DO_EXTRAS) {
+  console.error("Nothing to do. Pass --enrich or --extras (see the header of this file).");
   process.exit(1);
 }
 
@@ -107,6 +110,172 @@ async function fetchDetail(externalId) {
   const payload = await res.json().catch(() => null);
   const record = payload?.data ?? payload;
   return record && typeof record === "object" && !Array.isArray(record) ? { record } : null;
+}
+
+// ── Tags and notes ───────────────────────────────────────────────────────────
+// Both hang off the contact as their own endpoints, so they cost two more
+// requests each and are not part of the detail payload at all.
+//
+// Their envelopes are NOT the {data:[...]} shape the rest of the API uses:
+//   GET /contact/{id}/tags        -> {"contact_id":1,"tags":[{"name":"x","locked":0}]}
+//   GET /contact/{id}/action/note -> {"contact_id":1,"notes":[{action_id,date,title,details}]}
+// Parsing them like the others silently yields nothing, which is exactly how
+// these came to be missed the first time.
+
+async function fetchJson(path) {
+  // A run of this length will hit a dropped connection or a DNS hiccup sooner
+  // or later, and losing 30 minutes of progress to one blip is not acceptable.
+  // Network errors are retried; HTTP statuses are not — a 401 must still reach
+  // the lockout logic below rather than being papered over by a retry.
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(`${BASE}/v2/public${path}`, {
+        headers: { Authorization: `Bearer ${TOKEN}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      break;
+    } catch (error) {
+      if (attempt >= 3) throw error;
+      const wait = 2000 * (attempt + 1);
+      console.log(`  … network error (${error?.message ?? error}); retrying in ${wait / 1000}s`);
+      await sleep(wait);
+    }
+  }
+
+  if (res.status === 401) {
+    consecutive401++;
+    if (consecutive401 >= 3) {
+      throw new Error("Three consecutive 401s — token rejected or account locked out. Stopping.");
+    }
+    return null;
+  }
+  consecutive401 = 0;
+  if (!res.ok) return null;
+  return res.json().catch(() => null);
+}
+
+async function runExtras() {
+  // Ordering and resuming both key off external_notes_at, which only exists
+  // once the migration has run. Before that, fall back to processing every
+  // linked contact — the tag half still imports, and the run is resumable
+  // properly as soon as the column is there.
+  const { error: probe } = await supabase.from("contacts").select("external_notes_at").limit(1);
+  const hasNotesColumn = !probe;
+
+  const rows = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase
+      .from("contacts")
+      .select("id, external_id, tags")
+      .not("external_id", "is", null)
+      .range(from, from + PAGE - 1);
+    if (hasNotesColumn) {
+      q = q.order("external_notes_at", { ascending: true, nullsFirst: true });
+      if (!REFRESH_ALL) q = q.is("external_notes_at", null);
+    } else {
+      q = q.order("created_at", { ascending: true });
+    }
+    const { data, error } = await q;
+    if (error) throw new Error(`Reading contacts failed: ${error.message}`);
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+
+  const targets = rows.slice(0, LIMIT === Infinity ? undefined : LIMIT);
+  console.log(`Contacts needing tags/notes : ${targets.length}`);
+  console.log(`Requests                    : 2 per contact, one every ${INTERVAL}ms`);
+  console.log(`Estimated time              : ~${Math.ceil((targets.length * 2 * INTERVAL) / 60000)} minute(s)\n`);
+
+  if (targets.length === 0) {
+    console.log("Nothing to do.");
+    return;
+  }
+
+  let done = 0, withTags = 0, withNotes = 0, failed = 0;
+  let notesColumnWarned = false;
+  let notesSkipped = false;
+  const startedAt = Date.now();
+
+  for (const target of targets) {
+    let tagPayload, notePayload;
+    try {
+      tagPayload = await fetchJson(`/contact/${encodeURIComponent(target.external_id)}/tags`);
+      await sleep(INTERVAL);
+      notePayload = await fetchJson(`/contact/${encodeURIComponent(target.external_id)}/action/note`);
+    } catch (error) {
+      console.error(`\nSTOPPED: ${error.message}`);
+      console.error(`Progress kept: ${done} contacts done. Re-run to continue.`);
+      process.exit(1);
+    }
+
+    const remoteTags = (tagPayload?.tags ?? [])
+      .map((t) => (typeof t === "string" ? t : t?.name))
+      .filter(Boolean)
+      .map((t) => String(t).trim())
+      .filter(Boolean);
+
+    const notes = (notePayload?.notes ?? []).filter(Boolean);
+
+    // Union, never subtract: a tag added here by hand must survive a sync, and
+    // there is no way to tell "removed in BoldTrail" from "added locally".
+    const merged = [...new Set([...(target.tags ?? []), ...remoteTags])];
+
+    let { error } = await supabase
+      .from("contacts")
+      .update({
+        tags: merged,
+        external_notes: notes,
+        external_notes_at: new Date().toISOString(),
+      })
+      .eq("id", target.id);
+
+    // Tags land in a column that has always existed; notes need a migration.
+    // Rather than refuse to run at all, import what can be imported and say so
+    // once — the tag fetch is the expensive half and there is no reason to
+    // spend it twice.
+    if (error && /external_notes/.test(error.message)) {
+      if (!notesColumnWarned) {
+        console.log("  ! external_notes column missing — importing tags only.");
+        console.log("    Run supabase/add_external_notes.sql, then re-run with --all.\n");
+        notesColumnWarned = true;
+      }
+      notesSkipped = true;
+      ({ error } = await supabase.from("contacts").update({ tags: merged }).eq("id", target.id));
+    }
+
+    if (error) failed++;
+    else {
+      done++;
+      if (remoteTags.length) withTags++;
+      if (notes.length) withNotes++;
+    }
+
+    const n = done + failed;
+    if (n % 25 === 0 || n === targets.length) {
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      const left = Math.ceil(((targets.length - n) * 2 * INTERVAL) / 60000);
+      console.log(
+        `  ${n}/${targets.length} — ${withTags} with tags, ${withNotes} with notes, ${failed} failed · ${elapsed}s elapsed, ~${left}m left`
+      );
+    }
+
+    await sleep(INTERVAL);
+  }
+
+  console.log(`\nDone. ${done} contacts updated — ${withTags} had tags, ${withNotes} had notes.`);
+  if (notesSkipped) {
+    console.log("");
+    console.log(`WARNING: those ${withNotes} sets of notes were fetched but NOT saved —`);
+    console.log("the external_notes column does not exist yet. Apply");
+    console.log("supabase/add_external_notes.sql, then re-run with --extras --all.");
+  }
+}
+
+if (DO_EXTRAS) {
+  await runExtras();
+  process.exit(0);
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
