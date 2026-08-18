@@ -129,15 +129,21 @@ Top tags: `investor` (391), `crexi` (371), `vikings` (256), `housejet` (100),
 
 **There is now one file: `supabase/setup.sql`.** Paste it into the Supabase SQL
 editor and run it. It is idempotent, so it can be re-run any time, and it is the
-only thing that ever needs running.
+only thing that ever needs running. The live database is already up to date with
+it; the file matters for rebuilding from scratch and for reading what a column is
+actually for.
 
 The fourteen separate migration files it replaces have been deleted. They had to
 be applied in the right order by hand, and by the eighth of them "which of these
 has actually run on production" was no longer answerable from the repository —
 which is how `/api/campaigns` came to return **500** in production for weeks with
 the fix sitting unapplied in the repo the whole time. That fix (the `image_url`
-→ `media_url` rename, from commit `a7e11c1`) is now section 7 of `setup.sql`, so
-running the file clears it.
+→ `media_url` rename, from commit `a7e11c1`) is now section 7 of `setup.sql`.
+
+**Both are applied as of 19 August 2026** — the stage change and the campaigns
+rename — and verified against production: `/api/campaigns` returns **200**, and
+the pipeline reads 111 New Lead · 14 Prospect · 641 Active Lead · 27 Client ·
+191 Archived across 984 contacts.
 
 Only two other files remain in `supabase/`: `schema.sql`, which documents the
 tables shared with the main website and is not runnable, and
