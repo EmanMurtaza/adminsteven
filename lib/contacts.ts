@@ -31,6 +31,47 @@ export type Stage = (typeof STAGES)[number]["value"];
 /** The stage a contact starts in, here and in BoldTrail alike. */
 export const DEFAULT_STAGE: Stage = "new_lead";
 
+/**
+ * One colour per stage, defined once so the table, the pipeline board and the
+ * alumni summary cannot drift apart.
+ *
+ * The scale carries the pipeline's shape rather than just being eight different
+ * colours: cool grey-blue for a lead nobody has touched, warming through gold as
+ * it is worked, into forest green once it starts going well, and finally flat
+ * grey when it is over. That means a column of badges can be read at a glance
+ * without matching each one against a legend — which is the whole job of colour
+ * in a table this dense.
+ *
+ * Every text/background pair here clears 4.5:1. The earlier set used three near
+ * identical navy tints for Prospect, Sphere and Renter, so half the vocabulary
+ * was indistinguishable at a glance.
+ *
+ * Full class strings, not interpolated fragments — Tailwind scans source text,
+ * so a class built at runtime is a class that never ships.
+ */
+export const STAGE_TONES: Record<Stage, string> = {
+  new_lead: "bg-navy/[0.07] text-navy ring-navy/20",
+  prospect: "bg-gold/15 text-gold-dark ring-gold/40",
+  sphere: "bg-burgundy/10 text-burgundy ring-burgundy/25",
+  active_lead: "bg-gold/30 text-gold-dark ring-gold/60",
+  client: "bg-forest/12 text-forest ring-forest/30",
+  contract: "bg-forest/20 text-forest ring-forest/45",
+  closed: "bg-forest/30 text-forest ring-forest/60",
+  archived: "bg-cream-200 text-ink-soft ring-ink-mute/30",
+};
+
+/** The same scale as a solid dot, for the pipeline board's column headers. */
+export const STAGE_DOTS: Record<Stage, string> = {
+  new_lead: "bg-navy/30",
+  prospect: "bg-gold/60",
+  sphere: "bg-burgundy/60",
+  active_lead: "bg-gold",
+  client: "bg-forest/50",
+  contract: "bg-forest/75",
+  closed: "bg-forest",
+  archived: "bg-ink-mute/40",
+};
+
 /** Stages that mean "no longer being worked", so nothing should chase them. */
 export const CLOSED_STAGES: Stage[] = ["closed", "archived"];
 

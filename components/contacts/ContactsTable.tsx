@@ -1,17 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Trash2, ChevronDown, Mail, Phone, CalendarClock, Check } from "lucide-react";
 import {
   Contact,
   LEAD_TYPES,
-  STAGES,
   contactName,
   leadTypeLabel,
   secondaryRoles,
 } from "@/lib/contacts";
 import { formatDate } from "@/lib/format";
 import RoleBadges from "./RoleBadges";
+import StageSelect from "./StageSelect";
 import RawDetails from "./RawDetails";
 import ExternalNotes from "./ExternalNotes";
 
@@ -22,20 +22,14 @@ interface Props {
 }
 
 // Warm for a lead being worked, cool for one parked, grey once it is finished.
-const stageStyles: Record<string, string> = {
-  new_lead: "bg-gold/15 text-gold-dark border border-gold/40",
-  prospect: "bg-navy/10 text-navy border border-navy/25",
-  sphere: "bg-navy/10 text-navy border border-navy/25",
-  active_lead: "bg-gold/25 text-gold-dark border border-gold/60",
-  client: "bg-gold/25 text-gold-dark border border-gold/60",
-  contract: "bg-navy/15 text-navy border border-navy/40",
-  closed: "bg-cream-200 text-ink-soft border border-ink-mute/30",
-  archived: "bg-cream-200 text-ink-mute border border-ink-mute/20",
-};
 
 
-const inputClass =
-  "w-full bg-cream-100 border border-gold/30 text-navy rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent";
+/** Header cell. Bottom border lives here since the table is border-separate. */
+const th = "px-3 py-2.5 font-semibold whitespace-nowrap border-b border-gold/25";
+
+/** Body cell, with the hairline that used to come from divide-y. */
+const td = "px-3 py-2.5 border-b border-gold/12";
+
 
 /** "Austin, TX 78701" from whichever parts exist, or nothing at all. */
 function locationOf(c: Contact): string | null {
@@ -67,6 +61,32 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const today = todayISO();
 
+  // Which edges still have content past them. Measured rather than assumed:
+  // whether the table overflows depends on the window, the sidebar and how long
+  // the longest email happens to be.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(true);
+
+  const syncShadows = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 1);
+    // A pixel of slack: fractional widths mean scrollLeft rarely lands exactly.
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    syncShadows();
+    const el = scrollerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    // The overflow changes when the window resizes or the row count does, not
+    // only when someone scrolls.
+    const observer = new ResizeObserver(syncShadows);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [syncShadows, contacts.length]);
+
   async function patch(id: string, values: Partial<Contact>) {
     if (!onUpdate) return;
     setPending(id);
@@ -94,36 +114,61 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
   }
 
   return (
-    <div className="bg-white border border-gold/25 rounded-xl overflow-hidden shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-cream-100 border-b border-gold/25">
-            <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-ink-mute">
+    <div className="relative bg-white border border-gold/25 rounded-xl shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]">
+      {/* Ten columns do not fit a laptop beside a 256px sidebar, so the table
+          scrolls. These shadows are what stop that reading as "the other
+          columns are missing" — they appear only on the side that actually has
+          more content, which is the difference between a hint and decoration. */}
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-y-0 left-[180px] w-8 z-30 bg-gradient-to-r from-navy/12 to-transparent transition-opacity duration-200 ${
+          atStart ? "opacity-0" : "opacity-100"
+        }`}
+      />
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-y-0 right-[76px] w-8 z-30 bg-gradient-to-l from-navy/12 to-transparent transition-opacity duration-200 ${
+          atEnd ? "opacity-0" : "opacity-100"
+        }`}
+      />
+      <div ref={scrollerRef} onScroll={syncShadows} className="overflow-x-auto rounded-xl">
+        {/* w-max, NOT w-full. In an auto-layout table `w-[140px]` is a
+            suggestion, so when the columns overflow the browser honours the
+            min-widths and crushes everything else — which is how Stage ended up
+            a 40px box with its label clipped off. Sizing the table to its
+            content means every column gets the width it asked for and the
+            container scrolls instead. */}
+        <table className="w-max min-w-full text-sm border-separate border-spacing-0">
+          <thead className="bg-cream-100">
+            <tr className="text-left text-[10px] uppercase tracking-[0.13em] text-ink-soft">
               {/* Name is pinned so it stays readable once the row scrolls —
                   a wide table whose left edge disappears is a table of
                   anonymous numbers. */}
-              <th className="sticky left-0 z-20 bg-cream-100 px-4 py-3 font-medium min-w-[190px]">
+              <th className="sticky left-0 z-20 bg-cream-100 px-3 py-2.5 font-semibold min-w-[180px] border-b border-gold/25 after:absolute after:inset-y-0 after:-right-px after:w-px after:bg-gold/25">
                 Name
               </th>
-              <th className="px-4 py-3 font-medium min-w-[210px]">Contact</th>
-              <th className="px-4 py-3 font-medium min-w-[150px]">Type</th>
-              <th className="px-4 py-3 font-medium w-[140px]">Stage</th>
-              <th className="px-4 py-3 font-medium w-[90px]">Rating</th>
-              <th className="px-4 py-3 font-medium min-w-[140px]">Location</th>
-              <th className="px-4 py-3 font-medium min-w-[120px]">Source</th>
-              <th className="px-4 py-3 font-medium min-w-[150px]">Hashtags</th>
-              <th className="px-4 py-3 font-medium w-[110px]">Last visit</th>
-              <th className="px-4 py-3 font-medium w-[110px]">Created</th>
-              <th className="px-4 py-3 font-medium w-[150px]">Follow up</th>
-              <th className="px-4 py-3 font-medium text-right w-[90px]">Actions</th>
+              <th className={`${th} min-w-[195px]`}>Contact</th>
+              <th className={`${th} min-w-[125px]`}>Type</th>
+              <th className={`${th} min-w-[145px]`}>Stage</th>
+              <th className={`${th} min-w-[115px]`}>Location</th>
+              <th className={`${th} min-w-[115px]`}>Source</th>
+              <th className={`${th} min-w-[125px]`}>Hashtags</th>
+              <th className={`${th} min-w-[90px]`}>Last visit</th>
+              <th className={`${th} min-w-[130px]`}>Follow up</th>
+              {/* Pinned like Name. These are the only buttons in the row, and a
+                  delete you have to go looking for sideways is a delete nobody
+                  finds. */}
+              <th className="sticky right-0 z-20 bg-cream-100 px-3 py-2.5 font-semibold whitespace-nowrap text-right min-w-[76px] border-b border-gold/25 before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-gold/25">
+                Actions
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gold/15">
+          <tbody>
             {contacts.map((c) => {
               const due = c.next_follow_up && c.next_follow_up <= today;
               const open = expanded === c.id;
               return (
-                <>
+                <Fragment key={c.id}>
                   <tr
                     key={c.id}
                     className={`group align-middle transition-colors hover:bg-cream-100/60 ${
@@ -141,7 +186,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                         Hard-coding the composited hex would work until someone
                         changes the gold. */}
                     <td
-                      className={`sticky left-0 z-10 px-4 py-3 bg-white bg-gradient-to-r transition-colors group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
+                      className={`sticky left-0 z-10 px-3 py-2.5 border-b border-gold/12 bg-white bg-gradient-to-r transition-colors after:absolute after:inset-y-0 after:-right-px after:w-px after:bg-gold/15 group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
                         due ? "from-gold/[0.06] to-gold/[0.06]" : "from-transparent to-transparent"
                       }`}
                     >
@@ -158,19 +203,34 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                           <ChevronDown size={11} className={open ? "rotate-180" : ""} />
                         </span>
                       </button>
+                      {/* Rating rides with the name instead of holding a column
+                          of its own: it is two characters wide and only set on
+                          a minority of contacts, so a whole column of "—" was
+                          paying full width for almost no information. */}
+                      <Stars rating={c.rating} />
                     </td>
 
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
+                    <td className={td}>
+                      <div className="flex flex-col gap-1 max-w-[180px]">
                         {c.email && (
-                          <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-gold-dark break-all">
-                            <Mail size={12} className="shrink-0" />
-                            {c.email}
+                          // truncate, not break-all: breaking mid-word split
+                          // "…gmail.co / m" across two lines and made every row
+                          // a different height.
+                          <a
+                            href={`mailto:${c.email}`}
+                            title={c.email}
+                            className="flex items-center gap-1.5 text-xs text-ink-soft hover:text-gold-dark transition-colors min-w-0"
+                          >
+                            <Mail size={12} className="shrink-0 text-ink-mute" />
+                            <span className="truncate">{c.email}</span>
                           </a>
                         )}
                         {c.phone && (
-                          <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-gold-dark">
-                            <Phone size={12} className="shrink-0" />
+                          <a
+                            href={`tel:${c.phone}`}
+                            className="flex items-center gap-1.5 text-xs text-ink-soft hover:text-gold-dark transition-colors tabular-nums"
+                          >
+                            <Phone size={12} className="shrink-0 text-ink-mute" />
                             {c.phone}
                           </a>
                         )}
@@ -181,52 +241,42 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                     {/* Read-only here. Type comes from BoldTrail and changes
                         rarely; Stage is the thing worked every day, so that one
                         keeps its inline control and this moves to Details. */}
-                    <td className="px-4 py-3">
-                      <RoleBadges contact={c} />
+                    <td className={td}>
+                      {/* Capped so three roles wrap to two lines instead of
+                          stretching the column to 200px on every row. */}
+                      <RoleBadges contact={c} className="max-w-[118px]" />
                     </td>
 
-                    <td className="px-4 py-3">
-                      <select
+                    <td className={td}>
+                      <StageSelect
                         value={c.stage}
-                        onChange={(e) => patch(c.id, { stage: e.target.value as Contact["stage"] })}
                         disabled={pending === c.id}
-                        aria-label="Stage"
-                        className={`${inputClass} ${stageStyles[c.stage] ?? ""}`}
-                      >
-                        {STAGES.map((s) => (
-                          <option key={s.value} value={s.value}>{s.label}</option>
-                        ))}
-                      </select>
+                        onChange={(stage) => patch(c.id, { stage })}
+                      />
                     </td>
 
-                    <td className="px-4 py-3">
-                      <Stars rating={c.rating} />
+                    <td className={`${td} text-xs text-ink-soft`}>
+                      {locationOf(c) ?? <Dash />}
                     </td>
 
-                    <td className="px-4 py-3 text-xs text-ink-soft">
-                      {locationOf(c) ?? <span className="text-ink-mute">—</span>}
+                    {/* Source over the date we first saw them. Two facts about
+                        provenance belong together, and it saves a column. */}
+                    <td className={td}>
+                      <div className="text-xs text-ink-soft">{c.source || <Dash />}</div>
+                      <div className="text-[11px] text-ink-mute mt-0.5 whitespace-nowrap">
+                        {formatDate(c.first_seen_at ?? c.created_at)}
+                      </div>
                     </td>
 
-                    <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
-                      {c.source || <span className="text-ink-mute">—</span>}
-                    </td>
-
-                    <td className="px-4 py-3">
+                    <td className={td}>
                       <TagList tags={c.tags} />
                     </td>
 
-                    <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
-                      {c.last_visit_at ? formatDate(c.last_visit_at) : <span className="text-ink-mute">—</span>}
+                    <td className={`${td} text-xs text-ink-soft whitespace-nowrap`}>
+                      {c.last_visit_at ? formatDate(c.last_visit_at) : <Dash />}
                     </td>
 
-                    {/* BoldTrail's registered date when there is one — it is
-                        older than our own created_at for anything imported, and
-                        it is the date that answers "how long have we had them". */}
-                    <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
-                      {formatDate(c.first_seen_at ?? c.created_at)}
-                    </td>
-
-                    <td className="px-4 py-3">
+                    <td className={td}>
                       <div className="flex items-center gap-1.5">
                         <input
                           type="date"
@@ -234,13 +284,25 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                           onChange={(e) => patch(c.id, { next_follow_up: e.target.value || null })}
                           disabled={pending === c.id}
                           aria-label="Next follow-up date"
-                          className={`${inputClass} ${due ? "border-gold ring-1 ring-gold/40" : ""}`}
+                          className={`w-full bg-white border rounded-md px-2 py-1.5 text-xs transition focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent ${
+                            due
+                              ? "border-gold ring-1 ring-gold/40 bg-gold/5 text-ink"
+                              : c.next_follow_up
+                                ? "border-gold/30 text-ink"
+                                : // An unset date is 25 rows of "mm/dd/yyyy"
+                                  // shouting for attention it has not earned.
+                                  "border-gold/20 text-ink-mute"
+                          }`}
                         />
                         {due && <CalendarClock size={14} className="text-gold-dark shrink-0" aria-label="Due" />}
                       </div>
                     </td>
 
-                    <td className="px-4 py-3 text-right">
+                    <td
+                      className={`sticky right-0 z-10 px-3 py-2.5 text-right border-b border-gold/12 bg-white bg-gradient-to-r transition-colors before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-gold/15 group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
+                        due ? "from-gold/[0.06] to-gold/[0.06]" : "from-transparent to-transparent"
+                      }`}
+                    >
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() =>
@@ -254,7 +316,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                           disabled={pending === c.id}
                           title="Mark as contacted today"
                           aria-label="Mark as contacted today"
-                          className="p-2 rounded text-ink-mute hover:text-gold-dark hover:bg-gold/10 transition-colors disabled:opacity-40"
+                          className="p-2 rounded-md text-ink-soft hover:text-gold-dark hover:bg-gold/12 transition-colors disabled:opacity-40"
                         >
                           <Check size={15} />
                         </button>
@@ -272,8 +334,8 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                   </tr>
 
                   {open && (
-                    <tr key={`${c.id}-detail`} className="bg-cream-100/50">
-                      <td colSpan={12} className="px-4 py-4">
+                    <tr className="bg-cream-100/60">
+                      <td colSpan={10} className="px-4 py-5 border-b border-gold/20">
                         <div className="grid md:grid-cols-2 gap-5">
                           <div>
                             <label className="block text-[11px] uppercase tracking-[0.14em] text-ink-mute mb-1.5">
@@ -368,7 +430,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
@@ -386,11 +448,16 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
  * when it means "never rated" — the two are not the same and only one of them
  * is a reason to skip someone.
  */
+/** An empty cell, said once so "no data" looks the same everywhere. */
+function Dash() {
+  return <span className="text-ink-mute">—</span>;
+}
+
 function Stars({ rating }: { rating: number | null }) {
-  if (!rating || rating < 1) return <span className="text-xs text-ink-mute">—</span>;
+  if (!rating || rating < 1) return null;
   return (
     <span
-      className="text-xs text-gold-dark tracking-[0.06em] whitespace-nowrap"
+      className="mt-1 block text-xs text-gold-dark tracking-[0.08em] whitespace-nowrap"
       title={`${rating} out of 5`}
       aria-label={`Rated ${rating} out of 5`}
     >
@@ -416,7 +483,7 @@ function TagList({ tags }: { tags: string[] }) {
       {shown.map((t) => (
         <span
           key={t}
-          className="inline-flex items-center rounded px-1.5 py-[3px] text-[10px] font-medium leading-none bg-cream-200 text-ink-soft max-w-[110px] truncate"
+          className="inline-flex items-center rounded px-1.5 py-[3px] text-[10px] font-medium leading-none bg-cream-200 text-ink-soft max-w-[62px] truncate"
         >
           {t}
         </span>

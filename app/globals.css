@@ -26,10 +26,18 @@
   /* Burgundy accent */
   --color-burgundy: #6b1f2e;
 
+  /* Forest — the "this went well" end of the pipeline (Client → Contract →
+     Closed). The brand had no colour that meant progress: gold is the accent
+     used for everything, so a won deal and an untouched lead looked the same. */
+  --color-forest: #2f6b4f;
+
   /* Neutral text */
   --color-ink: #1c1c1c;
   --color-ink-soft: #4a4a4a;
-  --color-ink-mute: #7f8898;
+  /* Was #7f8898, which is 3.4:1 on white — under the 4.5:1 WCAG AA needs for
+     body text, and the main reason dense tables read as washed out. #5f6a7d is
+     5.2:1 and still clearly the muted step below ink-soft. */
+  --color-ink-mute: #5f6a7d;
 
   /* Fonts */
   --font-serif: "Cormorant Garamond", ui-serif, Georgia, serif;

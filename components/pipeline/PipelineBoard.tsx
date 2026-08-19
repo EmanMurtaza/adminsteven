@@ -3,7 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CalendarClock, Mail, Phone } from "lucide-react";
-import { Contact, DEFAULT_STAGE, STAGES, Stage, contactName } from "@/lib/contacts";
+import {
+  Contact,
+  DEFAULT_STAGE,
+  STAGES,
+  STAGE_DOTS,
+  Stage,
+  contactName,
+} from "@/lib/contacts";
 import RoleBadges from "@/components/contacts/RoleBadges";
 
 interface Props {
@@ -97,9 +104,17 @@ export default function PipelineBoard({ contacts, onMove }: Props) {
               isOver ? "border-gold ring-2 ring-gold/30" : "border-gold/25"
             }`}
           >
-            <div className="px-4 py-3 border-b border-gold/20 flex items-center justify-between shrink-0">
-              <h3 className="font-serif text-navy text-base">{stage.label}</h3>
-              <span className="text-xs font-medium text-ink-mute bg-white border border-gold/25 rounded-full px-2 py-0.5">
+            {/* The same colour scale the table's stage pills use, so a stage
+                is recognisable across both views without reading the label. */}
+            <div className="px-4 py-3 border-b border-gold/20 flex items-center justify-between gap-2 shrink-0">
+              <h3 className="font-serif text-navy text-base flex items-center gap-2 min-w-0">
+                <span
+                  aria-hidden
+                  className={`w-2 h-2 rounded-full shrink-0 ${STAGE_DOTS[stage.value]}`}
+                />
+                <span className="truncate">{stage.label}</span>
+              </h3>
+              <span className="text-xs font-medium text-ink-soft bg-white border border-gold/25 rounded-full px-2 py-0.5 tabular-nums shrink-0">
                 {cards.length}
               </span>
             </div>
