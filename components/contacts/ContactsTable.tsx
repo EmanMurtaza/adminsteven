@@ -13,6 +13,7 @@ import {
 import { formatDate } from "@/lib/format";
 import RoleBadges from "./RoleBadges";
 import StageSelect from "./StageSelect";
+import ColumnFilters, { type ColumnFilterValues } from "./ColumnFilters";
 import RawDetails from "./RawDetails";
 import ExternalNotes from "./ExternalNotes";
 
@@ -20,6 +21,8 @@ interface Props {
   contacts: Contact[];
   onUpdate?: (id: string, patch: Partial<Contact>) => Promise<{ error?: string }>;
   onDelete?: (id: string) => Promise<{ error?: string }>;
+  /** Per-column filter values, from the URL. Omit to hide the filter row. */
+  columnFilters?: ColumnFilterValues;
 }
 
 // Warm for a lead being worked, cool for one parked, grey once it is finished.
@@ -57,7 +60,12 @@ function todayISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
 }
 
-export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
+export default function ContactsTable({
+  contacts,
+  onUpdate,
+  onDelete,
+  columnFilters,
+}: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const today = todayISO();
@@ -177,6 +185,10 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                 value={c.last_visit_at ? formatDate(c.last_visit_at) : null}
               />
               <MobileFact label="Created" value={formatDate(c.first_seen_at ?? c.created_at)} />
+              <MobileFact
+                label="Last followed up"
+                value={c.last_contacted_at ? formatDate(c.last_contacted_at) : "Never"}
+              />
             </dl>
 
             {c.tags?.length > 0 && (
@@ -273,6 +285,9 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
               <th className={`${th} min-w-[115px]`}>Source</th>
               <th className={`${th} min-w-[125px]`}>Hashtags</th>
               <th className={`${th} min-w-[90px]`}>Last visit</th>
+              {/* BoldTrail's record of a real call or a hand-written note —
+                  never its campaign log. See lib/boldtrail/activity. */}
+              <th className={`${th} min-w-[105px]`}>Last followed up</th>
               <th className={`${th} min-w-[130px]`}>Follow up</th>
               {/* Pinned like Name. These are the only buttons in the row, and a
                   delete you have to go looking for sideways is a delete nobody
@@ -281,6 +296,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                 Actions
               </th>
             </tr>
+            {columnFilters && <ColumnFilters values={columnFilters} />}
           </thead>
           <tbody>
             {contacts.map((c) => {
@@ -400,6 +416,19 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                       {c.last_visit_at ? formatDate(c.last_visit_at) : <Dash />}
                     </td>
 
+                    <td className={`${td} text-xs whitespace-nowrap`}>
+                      {c.last_contacted_at ? (
+                        <span className="text-ink-soft">{formatDate(c.last_contacted_at)}</span>
+                      ) : (
+                        // Blank for 927 of 978, and honestly so: BoldTrail's
+                        // note log is almost entirely campaign enrolments, and
+                        // "a bulk email went out" is not a follow-up.
+                        <span className="text-ink-mute" title="No call or note recorded in BoldTrail">
+                          Never
+                        </span>
+                      )}
+                    </td>
+
                     <td className={td}>
                       <div className="flex items-center gap-1.5">
                         <input
@@ -459,7 +488,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
 
                   {open && (
                     <tr className="bg-cream-100/60">
-                      <td colSpan={10} className="px-4 py-5 border-b border-gold/20">
+                      <td colSpan={11} className="px-4 py-5 border-b border-gold/20">
                         <div className="grid md:grid-cols-2 gap-5">
                           <div>
                             <label className="block text-[11px] uppercase tracking-[0.14em] text-ink-mute mb-1.5">

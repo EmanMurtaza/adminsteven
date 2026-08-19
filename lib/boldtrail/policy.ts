@@ -100,8 +100,8 @@ export const FIELD_SYNC_POLICY: FieldPolicy[] = [
   {
     field: "last_contacted_at",
     label: "Last contacted",
-    direction: "local_only",
-    note: "Lives only here.",
+    direction: "pull_only",
+    note: "Seeded from BoldTrail's record of a real call or a hand-written note, and never cleared by a sync — marking someone contacted here is a fact BoldTrail does not have. Their campaign log is deliberately ignored: almost every contact is in one, and \"a bulk email went out\" is not a follow-up.",
   },
   {
     field: "notes",

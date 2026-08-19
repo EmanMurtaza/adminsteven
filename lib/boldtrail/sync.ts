@@ -12,7 +12,8 @@ import {
   tokenFingerprint,
 } from "./client";
 import { fromDetailContact, fromListContact, type MappedContact } from "./mapping";
-import { DEFAULT_STAGE } from "../contacts";
+import { DEFAULT_STAGE, type ExternalNote } from "../contacts";
+import { lastFollowUpAt } from "./activity";
 import { localFingerprint, remoteFingerprint } from "./hash";
 import {
   getLockedUntil,
@@ -594,7 +595,7 @@ export async function remapStoredDetails(
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id, stage, external_raw")
+      .select("id, stage, external_raw, external_notes, last_contacted_at")
       .not("external_id", "is", null)
       .not("external_detail_at", "is", null)
       .range(from, from + PAGE - 1);
@@ -604,6 +605,8 @@ export async function remapStoredDetails(
       id: string;
       stage: string;
       external_raw: Record<string, unknown>;
+      external_notes: ExternalNote[] | null;
+      last_contacted_at: string | null;
     }[];
     if (rows.length === 0) break;
 
@@ -634,6 +637,12 @@ export async function remapStoredDetails(
         // Steven has since made. A stage still on the default is one nobody has
         // touched; anything else is his and is left exactly where it is.
         stage: row.stage === DEFAULT_STAGE ? mapped.stage : row.stage,
+        // When BoldTrail last saw a real follow-up. Null for most contacts, and
+        // that is the point — see lib/boldtrail/activity for why the note log
+        // cannot be read as contact history. Never clears a date already here:
+        // a locally recorded call is a fact BoldTrail simply does not know.
+        last_contacted_at:
+          lastFollowUpAt(row.external_raw, row.external_notes) ?? row.last_contacted_at,
       });
     }
 
@@ -644,6 +653,7 @@ export async function remapStoredDetails(
         "lead_type",
         "deal_types",
         "stage",
+        "last_contacted_at",
       ];
       const { error: writeError } = await supabase
         .from("contacts")

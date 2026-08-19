@@ -11,7 +11,15 @@ import {
   queryString,
 } from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
-import { Contact, DEFAULT_STAGE, LEAD_TYPES, STAGES, searchTerms } from "@/lib/contacts";
+import {
+  Contact,
+  DEFAULT_STAGE,
+  LEAD_TYPES,
+  STAGES,
+  applyColumnFilters,
+  hasColumnFilters,
+  searchTerms,
+} from "@/lib/contacts";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -77,7 +85,32 @@ export default async function ContactsPage({
   const from = (page - 1) * PAGE_SIZE;
   const today = todayISO();
 
-  const isFiltered = Boolean(stage || leadType || source || search || tag);
+  // Per-column filters. Free text ones are plain strings; the two date columns
+  // and the follow-up column take a small vocabulary rather than a date picker,
+  // because "who have I not touched in 90 days" is the actual question and
+  // picking two dates to ask it is a chore.
+  const colName = str(params.name)?.trim();
+  const colContact = str(params.contact)?.trim();
+  const colLocation = str(params.location)?.trim();
+  const colSource = str(params.source_q)?.trim();
+  const colVisited = str(params.visited);
+  const colFollowed = str(params.followed);
+  const colDue = str(params.due);
+
+  const columnFilters = {
+    name: colName,
+    contact: colContact,
+    type: leadType,
+    stage,
+    location: colLocation,
+    source: colSource,
+    tag,
+    visited: colVisited,
+    followed: colFollowed,
+    due: colDue,
+  };
+
+  const isFiltered = Boolean(source || search) || hasColumnFilters(columnFilters);
 
   let query = supabase
     .from("contacts")
@@ -103,6 +136,8 @@ export default async function ContactsPage({
   for (const group of search ? searchTerms(search) : []) {
     query = query.or(group);
   }
+
+  query = applyColumnFilters(query, columnFilters, today);
 
   const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);
 
@@ -249,7 +284,20 @@ export default async function ContactsPage({
   // Every filter except the one being changed rides along, so switching tabs
   // keeps your search and dropdowns. `page` is never carried — a different
   // filter means a different result set, so it starts at page 1.
-  const carried = { stage, type: leadType, source, q: search, tag };
+  const carried = {
+    stage,
+    type: leadType,
+    source,
+    q: search,
+    tag,
+    name: colName,
+    contact: colContact,
+    location: colLocation,
+    source_q: colSource,
+    visited: colVisited,
+    followed: colFollowed,
+    due: colDue,
+  };
   const qs = (over: Record<string, string | undefined>) =>
     queryString("/contacts", {
       view: view === "all" ? undefined : view,
@@ -351,6 +399,7 @@ export default async function ContactsPage({
             contacts={contacts}
             onUpdate={updateContact}
             onDelete={deleteContact}
+            columnFilters={columnFilters}
           />
         )}
 

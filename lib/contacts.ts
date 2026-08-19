@@ -637,3 +637,117 @@ export function previewImport(
     drafts,
   };
 }
+
+// ─── Per-column filters ──────────────────────────────────────────────────────
+
+/**
+ * The per-column filter values, read from the URL.
+ *
+ * Shared by /contacts and /contacts/alumni so the two cannot drift — they
+ * render the same table, and a filter that behaved differently depending on
+ * which page you were on would be worse than no filter at all.
+ */
+export interface ColumnFilters {
+  name?: string;
+  contact?: string;
+  type?: string;
+  stage?: string;
+  location?: string;
+  source?: string;
+  tag?: string;
+  visited?: string;
+  followed?: string;
+  due?: string;
+}
+
+/** Anything with the Supabase filter methods these need. */
+interface Filterable {
+  or(filter: string): Filterable;
+  eq(column: string, value: unknown): Filterable;
+  is(column: string, value: null): Filterable;
+  not(column: string, op: string, value: null): Filterable;
+  gte(column: string, value: string): Filterable;
+  lte(column: string, value: string): Filterable;
+  ilike(column: string, pattern: string): Filterable;
+  contains(column: string, value: readonly string[]): Filterable;
+}
+
+/** PostgREST reads commas and parens inside or() as syntax. */
+function clean(value: string): string {
+  return value.replace(/[,()]/g, " ").trim();
+}
+
+/**
+ * Apply every per-column filter that is set.
+ *
+ * They AND together — that is what makes them columns rather than a second
+ * search box: "sellers in Texas I have never followed up" is three filters, not
+ * one query someone has to phrase perfectly.
+ */
+export function applyColumnFilters<Q extends Filterable>(
+  query: Q,
+  f: ColumnFilters,
+  todayISO: string
+): Q {
+  let q = query as Filterable;
+
+  if (f.name) {
+    const like = `%${clean(f.name)}%`;
+    q = q.or(`first_name.ilike.${like},last_name.ilike.${like}`);
+  }
+
+  if (f.contact) {
+    const safe = clean(f.contact);
+    const like = `%${safe}%`;
+    const parts = [`email.ilike.${like}`, `second_email.ilike.${like}`, `phone.ilike.${like}`];
+    // A number typed as "(817) 235" still has to reach a digits-only column.
+    const digits = safe.replace(/\D/g, "");
+    if (digits.length >= 3) parts.push(`phone.ilike.%${digits}%`);
+    q = q.or(parts.join(","));
+  }
+
+  if (f.location) {
+    const like = `%${clean(f.location)}%`;
+    q = q.or(
+      `city.ilike.${like},state.ilike.${like},zip_code.ilike.${like},address.ilike.${like}`
+    );
+  }
+
+  // Contains rather than equals: BoldTrail's sources are free text ("Lead
+  // Import", "Manual Add") and are only ever going to be typed as a fragment.
+  if (f.source) q = q.ilike("source", `%${clean(f.source)}%`);
+
+  // Array containment on deal_types, not lead_type — someone who is buying and
+  // selling belongs under both, which the single column cannot express.
+  if (f.type) q = q.contains("deal_types", [f.type]);
+  if (f.stage) q = q.eq("stage", f.stage);
+  if (f.tag) q = q.contains("tags", [f.tag]);
+
+  // "none" means the column is empty; a number means "within that many days".
+  // A vocabulary rather than a date picker, because "who have I not touched in
+  // 90 days" is the real question and picking two dates to ask it is a chore.
+  for (const [column, value] of [
+    ["last_visit_at", f.visited],
+    ["last_contacted_at", f.followed],
+  ] as const) {
+    if (!value) continue;
+    if (value === "none") {
+      q = q.is(column, null);
+      continue;
+    }
+    const days = Number(value);
+    if (!Number.isFinite(days)) continue;
+    q = q.gte(column, new Date(Date.now() - days * 86_400_000).toISOString());
+  }
+
+  if (f.due === "overdue") q = q.lte("next_follow_up", todayISO);
+  else if (f.due === "set") q = q.not("next_follow_up", "is", null);
+  else if (f.due === "none") q = q.is("next_follow_up", null);
+
+  return q as Q;
+}
+
+/** Whether any column filter is actually set. */
+export function hasColumnFilters(f: ColumnFilters): boolean {
+  return Object.values(f).some(Boolean);
+}

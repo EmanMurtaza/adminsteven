@@ -8,6 +8,8 @@ import {
   Contact,
   LEAD_TYPES,
   STAGES,
+  applyColumnFilters,
+  hasColumnFilters,
   searchTerms,
   stageLabel,
 } from "@/lib/contacts";
@@ -52,7 +54,23 @@ export default async function AlumniPage({
   const page = Math.max(1, Number(str(params.page) ?? "1") || 1);
   const from = (page - 1) * PAGE_SIZE;
 
-  const isFiltered = Boolean(stage || leadType || search || tag);
+  const columnFilters = {
+    name: str(params.name)?.trim(),
+    contact: str(params.contact)?.trim(),
+    type: leadType,
+    stage,
+    location: str(params.location)?.trim(),
+    source: str(params.source_q)?.trim(),
+    tag,
+    visited: str(params.visited),
+    followed: str(params.followed),
+    due: str(params.due),
+  };
+
+  const isFiltered = Boolean(search) || hasColumnFilters(columnFilters);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(
+    new Date()
+  );
 
   let query = supabase
     .from("contacts")
@@ -61,9 +79,7 @@ export default async function AlumniPage({
     .order("next_follow_up", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
-  if (stage) query = query.eq("stage", stage);
-  if (leadType) query = query.contains("deal_types", [leadType]);
-  if (tag) query = query.contains("tags", [tag]);
+  query = applyColumnFilters(query, columnFilters, today);
   for (const group of search ? searchTerms(search) : []) {
     query = query.or(group);
   }
@@ -220,12 +236,13 @@ export default async function AlumniPage({
               contacts={contacts}
               onUpdate={updateContact}
               onDelete={deleteContact}
+              columnFilters={columnFilters}
             />
             <Pagination
               currentPage={page}
               totalPages={totalPages}
               basePath="/contacts/alumni"
-              extraParams={{ stage, type: leadType, q: search, tag }}
+              extraParams={{ ...columnFilters, q: search, source_q: columnFilters.source }}
             />
           </>
         )}
