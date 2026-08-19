@@ -6,8 +6,6 @@ import {
   FilterBar,
   FilterTabs,
   SearchField,
-  SelectField,
-  TextField,
   queryString,
 } from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
@@ -17,7 +15,9 @@ import {
   LEAD_TYPES,
   STAGES,
   applyColumnFilters,
+  columnFilterParams,
   hasColumnFilters,
+  multiParam,
   searchTerms,
 } from "@/lib/contacts";
 import Link from "next/link";
@@ -35,16 +35,6 @@ const VIEWS = [
 
 type ViewKey = (typeof VIEWS)[number]["key"];
 
-// How a contact got here — see the import actions below. This list is an
-// allowlist: `source` is free text on the way in, but only these are offered as
-// a filter, so anything missing here becomes unfilterable. "boldtrail" is the
-// CSV importer's default label and the value the sync writes.
-const SOURCES = [
-  { value: "website", label: "Website form" },
-  { value: "csv", label: "CSV import" },
-  { value: "boldtrail", label: "BoldTrail" },
-  { value: "manual", label: "Added by hand" },
-];
 
 function todayISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(new Date());
@@ -67,16 +57,10 @@ export default async function ContactsPage({
   const params = await searchParams;
   const rawView = str(params.view);
   const view: ViewKey = VIEWS.some((v) => v.key === rawView) ? (rawView as ViewKey) : "all";
-  const stage = STAGES.some((s) => s.value === str(params.stage))
-    ? str(params.stage)
-    : undefined;
-  // The tabs cover buyers and sellers; this reaches renters, vendors and agents.
-  const leadType = LEAD_TYPES.some((t) => t.value === str(params.type))
-    ? str(params.type)
-    : undefined;
-  const source = SOURCES.some((s) => s.value === str(params.source))
-    ? str(params.source)
-    : undefined;
+  // Stage and type take several values at once — "everything still open" is
+  // four of the eight stages, and most contacts hold more than one role.
+  const stage = multiParam(str(params.stage), STAGES);
+  const leadType = multiParam(str(params.type), LEAD_TYPES);
   const search = str(params.q)?.trim();
   // Free text rather than a dropdown: tags come from whatever the last import
   // contained, and listing them all would mean reading every row.
@@ -110,7 +94,7 @@ export default async function ContactsPage({
     due: colDue,
   };
 
-  const isFiltered = Boolean(source || search) || hasColumnFilters(columnFilters);
+  const isFiltered = Boolean(search) || hasColumnFilters(columnFilters);
 
   let query = supabase
     .from("contacts")
@@ -125,11 +109,8 @@ export default async function ContactsPage({
   else if (view === "buyer") query = query.contains("deal_types", ["buyer"]);
   else if (view === "seller") query = query.contains("deal_types", ["seller"]);
 
-  if (stage) query = query.eq("stage", stage);
-  if (leadType) query = query.contains("deal_types", [leadType]);
-  if (source) query = query.eq("source", source);
-  // Array containment, served by contacts_tags_idx (GIN).
-  if (tag) query = query.contains("tags", [tag]);
+  // Stage, type and tag are applied by applyColumnFilters below — they are
+  // column filters now and were being applied twice.
   // One or() group per word, ANDed — so "Rafael Diaz" matches a contact whose
   // first and last name live in different columns, which the old single-field
   // search never could. See searchTerms in lib/contacts.
@@ -284,20 +265,7 @@ export default async function ContactsPage({
   // Every filter except the one being changed rides along, so switching tabs
   // keeps your search and dropdowns. `page` is never carried — a different
   // filter means a different result set, so it starts at page 1.
-  const carried = {
-    stage,
-    type: leadType,
-    source,
-    q: search,
-    tag,
-    name: colName,
-    contact: colContact,
-    location: colLocation,
-    source_q: colSource,
-    visited: colVisited,
-    followed: colFollowed,
-    due: colDue,
-  };
+  const carried = { q: search, ...columnFilterParams(columnFilters) };
   const qs = (over: Record<string, string | undefined>) =>
     queryString("/contacts", {
       view: view === "all" ? undefined : view,
@@ -337,29 +305,19 @@ export default async function ContactsPage({
 
         {/* The active tab is not an input here, so it rides along hidden —
             otherwise applying a filter would drop you back to All. */}
+        {/* One search box across every field. Stage, type, source and tag used
+            to be repeated here as dropdowns and are now in the table's own
+            filter row, under the column each one applies to — two sets of
+            controls for the same thing left it ambiguous which was in force. */}
         <FilterBar
           action="/contacts"
           isFiltered={isFiltered}
-          hidden={{ view: view === "all" ? undefined : view }}
+          hidden={{ view: view === "all" ? undefined : view, ...columnFilterParams(columnFilters) }}
         >
           <SearchField
             defaultValue={search}
-            placeholder="Search name, email, phone, city…"
+            placeholder="Search everything — name, email, phone, city, tag…"
           />
-          <SelectField name="stage" value={stage} anyLabel="Any stage" options={STAGES} />
-          <SelectField
-            name="type"
-            value={leadType}
-            anyLabel="Any lead type"
-            options={LEAD_TYPES}
-          />
-          <SelectField
-            name="source"
-            value={source}
-            anyLabel="Any source"
-            options={SOURCES}
-          />
-          <TextField name="tag" value={tag} placeholder="Tag…" />
         </FilterBar>
 
         {/* The pager itself hides on a single page, so say where you are here

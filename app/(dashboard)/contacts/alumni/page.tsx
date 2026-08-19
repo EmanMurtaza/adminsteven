@@ -1,7 +1,7 @@
 import Header from "@/components/layout/Header";
 import ContactsTable from "@/components/contacts/ContactsTable";
 import Pagination from "@/components/ui/Pagination";
-import { FilterBar, SearchField, SelectField, TextField } from "@/components/ui/FilterBar";
+import { FilterBar, SearchField } from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import {
   ALUMNI_EMAIL_FILTER,
@@ -9,9 +9,10 @@ import {
   LEAD_TYPES,
   STAGES,
   applyColumnFilters,
+  columnFilterParams,
   hasColumnFilters,
+  multiParam,
   searchTerms,
-  stageLabel,
 } from "@/lib/contacts";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
@@ -43,12 +44,8 @@ export default async function AlumniPage({
   if (!supabase) redirect("/login");
 
   const params = await searchParams;
-  const stage = STAGES.some((s) => s.value === str(params.stage))
-    ? str(params.stage)
-    : undefined;
-  const leadType = LEAD_TYPES.some((t) => t.value === str(params.type))
-    ? str(params.type)
-    : undefined;
+  const stage = multiParam(str(params.stage), STAGES);
+  const leadType = multiParam(str(params.type), LEAD_TYPES);
   const search = str(params.q)?.trim();
   const tag = str(params.tag)?.trim();
   const page = Math.max(1, Number(str(params.page) ?? "1") || 1);
@@ -188,11 +185,15 @@ export default async function AlumniPage({
           )}
         </div>
 
-        <FilterBar action="/contacts/alumni" isFiltered={isFiltered}>
-          <SearchField defaultValue={search} placeholder="Search name, email, phone…" />
-          <SelectField name="stage" value={stage} anyLabel="Any stage" options={STAGES} />
-          <SelectField name="type" value={leadType} anyLabel="Any lead type" options={LEAD_TYPES} />
-          <TextField name="tag" value={tag} placeholder="Tag…" />
+        <FilterBar
+          action="/contacts/alumni"
+          isFiltered={isFiltered}
+          hidden={columnFilterParams(columnFilters)}
+        >
+          <SearchField
+            defaultValue={search}
+            placeholder="Search everything — name, email, phone, tag…"
+          />
         </FilterBar>
 
         <p className="text-sm text-ink-mute">
@@ -210,7 +211,6 @@ export default async function AlumniPage({
               {count === 1 ? "contact" : "contacts"}
             </>
           )}
-          {stage && ` in ${stageLabel(stage)}`}
           {isFiltered && " matching your filters"}
         </p>
 
@@ -242,7 +242,7 @@ export default async function AlumniPage({
               currentPage={page}
               totalPages={totalPages}
               basePath="/contacts/alumni"
-              extraParams={{ ...columnFilters, q: search, source_q: columnFilters.source }}
+              extraParams={{ q: search, ...columnFilterParams(columnFilters) }}
             />
           </>
         )}

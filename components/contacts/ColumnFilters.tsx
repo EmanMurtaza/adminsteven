@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useState } from "react";
 import { LEAD_TYPES, STAGES } from "@/lib/contacts";
+import MultiSelectFilter from "./MultiSelectFilter";
 
 // Per-column filters, living in a second header row so each one sits under the
 // column it filters.
@@ -19,8 +20,9 @@ import { LEAD_TYPES, STAGES } from "@/lib/contacts";
 export interface ColumnFilterValues {
   name?: string;
   contact?: string;
-  type?: string;
-  stage?: string;
+  /** Several at once — most contacts hold more than one role. */
+  type?: string[];
+  stage?: string[];
   location?: string;
   source?: string;
   tag?: string;
@@ -41,9 +43,12 @@ export default function ColumnFilters({ values }: { values: ColumnFilterValues }
   const pathname = usePathname();
   const params = useSearchParams();
 
-  function apply(key: string, value: string) {
+  function apply(key: string, value: string | string[]) {
     const next = new URLSearchParams(params.toString());
-    if (value) next.set(key, value);
+    // Several values ride in one param as a comma-separated list, so the URL
+    // stays readable and shareable: ?type=buyer,seller
+    const joined = Array.isArray(value) ? value.join(",") : value;
+    if (joined) next.set(key, joined);
     else next.delete(key);
     // A different filter is a different result set, so it starts at page 1.
     next.delete("page");
@@ -63,17 +68,17 @@ export default function ColumnFilters({ values }: { values: ColumnFilterValues }
         />
       </Cell>
       <Cell>
-        <SelectFilter
+        <MultiSelectFilter
           label="Any type"
-          value={values.type}
+          values={values.type ?? []}
           options={LEAD_TYPES.map((t) => ({ value: t.value, label: t.label }))}
           onChange={(v) => apply("type", v)}
         />
       </Cell>
       <Cell>
-        <SelectFilter
+        <MultiSelectFilter
           label="Any stage"
-          value={values.stage}
+          values={values.stage ?? []}
           options={STAGES.map((s) => ({ value: s.value, label: s.label }))}
           onChange={(v) => apply("stage", v)}
         />
@@ -137,9 +142,16 @@ function Cell({
   // scrolls visibly underneath them.
   const base = "px-3 pb-2.5 pt-0 align-top border-b border-gold/25";
   if (!sticky) return <td className={base}>{children}</td>;
+  // Opaque, and with the same hairline the header and body cells use, so the
+  // pinned edge is one continuous line down the whole table rather than
+  // reappearing per row. #f7efdc is cream-100 over the header tint.
   return (
     <td
-      className={`${base} sticky ${right ? "right-0" : "left-0"} z-20 bg-[#f7efdc]`}
+      className={`${base} sticky ${right ? "right-0" : "left-0"} z-20 bg-[#f7efdc] ${
+        right
+          ? "before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-gold/45"
+          : "after:absolute after:inset-y-0 after:-right-px after:w-px after:bg-gold/45"
+      }`}
     >
       {children}
     </td>

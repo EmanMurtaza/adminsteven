@@ -650,8 +650,9 @@ export function previewImport(
 export interface ColumnFilters {
   name?: string;
   contact?: string;
-  type?: string;
-  stage?: string;
+  /** Several at once, ORed within the column. */
+  type?: string[];
+  stage?: string[];
   location?: string;
   source?: string;
   tag?: string;
@@ -670,6 +671,29 @@ interface Filterable {
   lte(column: string, value: string): Filterable;
   ilike(column: string, pattern: string): Filterable;
   contains(column: string, value: readonly string[]): Filterable;
+  overlaps(column: string, value: readonly string[]): Filterable;
+  in(column: string, value: readonly string[]): Filterable;
+}
+
+/**
+ * Read a possibly-multi-valued param, keeping only values that are actually in
+ * the allowed set.
+ *
+ * Validating against the vocabulary is not politeness — an unrecognised stage
+ * would otherwise reach the CHECK-constrained column and return nothing at all,
+ * which reads as "no results" rather than "that filter is nonsense".
+ */
+export function multiParam(
+  raw: string | undefined,
+  allowed: readonly { value: string }[]
+): string[] | undefined {
+  if (!raw) return undefined;
+  const permitted = new Set(allowed.map((a) => a.value));
+  const picked = raw
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => permitted.has(v));
+  return picked.length ? picked : undefined;
 }
 
 /** PostgREST reads commas and parens inside or() as syntax. */
@@ -717,10 +741,15 @@ export function applyColumnFilters<Q extends Filterable>(
   // Import", "Manual Add") and are only ever going to be typed as a fragment.
   if (f.source) q = q.ilike("source", `%${clean(f.source)}%`);
 
-  // Array containment on deal_types, not lead_type — someone who is buying and
-  // selling belongs under both, which the single column cannot express.
-  if (f.type) q = q.contains("deal_types", [f.type]);
-  if (f.stage) q = q.eq("stage", f.stage);
+  // `overlaps` (&&), not `contains` (@>): picking Buyer and Seller means
+  // "either", not "both". Someone who is only a buyer still belongs in that
+  // result — containment would demand they were both and quietly return the
+  // handful who are.
+  //
+  // It is deal_types rather than lead_type for the same reason the Type column
+  // shows every role: someone buying and selling belongs under both.
+  if (f.type?.length) q = q.overlaps("deal_types", f.type);
+  if (f.stage?.length) q = q.in("stage", f.stage);
   if (f.tag) q = q.contains("tags", [f.tag]);
 
   // "none" means the column is empty; a number means "within that many days".
@@ -749,5 +778,15 @@ export function applyColumnFilters<Q extends Filterable>(
 
 /** Whether any column filter is actually set. */
 export function hasColumnFilters(f: ColumnFilters): boolean {
-  return Object.values(f).some(Boolean);
+  return Object.values(f).some((v) => (Array.isArray(v) ? v.length > 0 : Boolean(v)));
+}
+
+/** The column filters as URL params, for links that must carry them along. */
+export function columnFilterParams(f: ColumnFilters): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(f)) {
+    const joined = Array.isArray(value) ? value.join(",") : value;
+    if (joined) out[key === "source" ? "source_q" : key] = joined;
+  }
+  return out;
 }

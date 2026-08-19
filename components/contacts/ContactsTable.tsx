@@ -252,13 +252,13 @@ export default function ContactsTable({
           more content, which is the difference between a hint and decoration. */}
       <div
         aria-hidden
-        className={`pointer-events-none absolute inset-y-0 left-[180px] w-8 z-30 bg-gradient-to-r from-navy/12 to-transparent transition-opacity duration-200 ${
+        className={`pointer-events-none absolute inset-y-0 left-[180px] w-10 z-30 bg-gradient-to-r from-navy/20 via-navy/8 to-transparent transition-opacity duration-200 ${
           atStart ? "opacity-0" : "opacity-100"
         }`}
       />
       <div
         aria-hidden
-        className={`pointer-events-none absolute inset-y-0 right-[76px] w-8 z-30 bg-gradient-to-l from-navy/12 to-transparent transition-opacity duration-200 ${
+        className={`pointer-events-none absolute inset-y-0 right-[76px] w-10 z-30 bg-gradient-to-l from-navy/20 via-navy/8 to-transparent transition-opacity duration-200 ${
           atEnd ? "opacity-0" : "opacity-100"
         }`}
       />
@@ -275,7 +275,7 @@ export default function ContactsTable({
               {/* Name is pinned so it stays readable once the row scrolls —
                   a wide table whose left edge disappears is a table of
                   anonymous numbers. */}
-              <th className="sticky left-0 z-20 bg-cream-100 px-3 py-2.5 font-semibold min-w-[180px] border-b border-gold/25 after:absolute after:inset-y-0 after:-right-px after:w-px after:bg-gold/25">
+              <th className="sticky left-0 z-20 bg-cream-100 px-3 py-2.5 font-semibold min-w-[180px] border-b border-gold/25 after:absolute after:inset-y-0 after:-right-px after:w-px after:bg-gold/45">
                 Name
               </th>
               <th className={`${th} min-w-[195px]`}>Contact</th>
@@ -292,7 +292,7 @@ export default function ContactsTable({
               {/* Pinned like Name. These are the only buttons in the row, and a
                   delete you have to go looking for sideways is a delete nobody
                   finds. */}
-              <th className="sticky right-0 z-20 bg-cream-100 px-3 py-2.5 font-semibold whitespace-nowrap text-right min-w-[76px] border-b border-gold/25 before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-gold/25">
+              <th className="sticky right-0 z-20 bg-cream-100 px-3 py-2.5 font-semibold whitespace-nowrap text-right min-w-[76px] border-b border-gold/25 before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-gold/45">
                 Actions
               </th>
             </tr>
@@ -321,7 +321,7 @@ export default function ContactsTable({
                         Hard-coding the composited hex would work until someone
                         changes the gold. */}
                     <td
-                      className={`sticky left-0 z-10 px-3 py-2.5 border-b border-gold/12 bg-white bg-gradient-to-r transition-colors after:absolute after:inset-y-0 after:-right-px after:w-px after:bg-gold/15 group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
+                      className={`sticky left-0 z-10 px-3 py-2.5 border-b border-gold/12 bg-white bg-gradient-to-r transition-colors after:absolute after:inset-y-0 after:-right-px after:w-px after:bg-gold/35 group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
                         due ? "from-gold/[0.06] to-gold/[0.06]" : "from-transparent to-transparent"
                       }`}
                     >
@@ -452,7 +452,7 @@ export default function ContactsTable({
                     </td>
 
                     <td
-                      className={`sticky right-0 z-10 px-3 py-2.5 text-right border-b border-gold/12 bg-white bg-gradient-to-r transition-colors before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-gold/15 group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
+                      className={`sticky right-0 z-10 px-3 py-2.5 text-right border-b border-gold/12 bg-white bg-gradient-to-r transition-colors before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-gold/35 group-hover:from-cream-100/60 group-hover:to-cream-100/60 ${
                         due ? "from-gold/[0.06] to-gold/[0.06]" : "from-transparent to-transparent"
                       }`}
                     >
