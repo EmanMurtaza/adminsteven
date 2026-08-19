@@ -170,6 +170,15 @@ export interface Contact {
    */
   external_notes: ExternalNote[];
 
+  // BoldTrail link state. Optional because a contact typed in by hand or
+  // imported from a CSV has none of it, and because most queries never select
+  // these columns — see supabase/setup.sql section 2c for what each one is for.
+  external_id?: string | null;
+  external_source?: string | null;
+  external_synced_at?: string | null;
+  external_detail_at?: string | null;
+  sync_status?: string | null;
+
   submission_id: string | null;
   raw: Record<string, unknown>;
   created_at: string;
@@ -226,6 +235,72 @@ export function allRoles(c: Pick<Contact, "lead_type" | "deal_types">): string[]
 /** The roles beyond the primary — what a single-value Type column cannot show. */
 export function secondaryRoles(c: Pick<Contact, "lead_type" | "deal_types">): string[] {
   return (c.deal_types ?? []).filter((t) => t !== c.lead_type);
+}
+
+// ─── Search ──────────────────────────────────────────────────────────────────
+
+/** Columns a free-text search looks at, in the order a person would expect. */
+const SEARCH_COLUMNS = [
+  "first_name",
+  "last_name",
+  "email",
+  "second_email",
+  "phone",
+  "city",
+  "state",
+  "zip_code",
+  "company",
+  "source",
+  "notes",
+];
+
+/**
+ * A PostgREST `or()` group matching one search term against every searchable
+ * column. Exported for the pages to chain — see `searchTerms` below for why
+ * they are applied one call at a time.
+ */
+function termFilter(term: string): string {
+  // PostgREST splits or() on commas and parentheses, so a search containing
+  // either would otherwise break out of the filter and become bogus conditions.
+  const safe = term.replace(/[,()\\]/g, " ").trim();
+  if (!safe) return "";
+
+  const like = `%${safe}%`;
+  const parts = SEARCH_COLUMNS.map((c) => `${c}.ilike.${like}`);
+
+  // A phone typed the way people write it — "704-406" or "(817) 235" — has to
+  // reach a column stored as bare digits, so the punctuation is dropped and the
+  // digits searched separately.
+  const digits = safe.replace(/\D/g, "");
+  if (digits.length >= 3) parts.push(`phone.ilike.%${digits}%`);
+
+  // Tags are a text[], so ilike cannot reach them; containment is an exact
+  // element match, which is right for a tag — you know its name or you do not.
+  if (/^[\w-]+$/.test(safe)) parts.push(`tags.cs.{"${safe.toLowerCase()}"}`);
+
+  return parts.join(",");
+}
+
+/**
+ * The `or()` groups for a search box, one per word.
+ *
+ * Chained `.or()` calls are ANDed by PostgREST, so applying one group per term
+ * means "every word matches SOMETHING" rather than "one field contains the
+ * whole string". That is the difference between "Rafael Diaz" finding Rafael
+ * Diaz and finding nothing at all — first and last name are separate columns,
+ * so no single field has ever contained both words. It also makes word order
+ * irrelevant, so "diaz rafael" works too.
+ *
+ * Capped at four terms: each one is another OR group over eleven columns, and
+ * past four words this is no longer a search box, it is a sentence.
+ */
+export function searchTerms(search: string): string[] {
+  return search
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .map(termFilter)
+    .filter(Boolean);
 }
 
 // ─── Alumni ──────────────────────────────────────────────────────────────────

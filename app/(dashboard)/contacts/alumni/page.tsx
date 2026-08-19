@@ -8,6 +8,7 @@ import {
   Contact,
   LEAD_TYPES,
   STAGES,
+  searchTerms,
   stageLabel,
 } from "@/lib/contacts";
 import Link from "next/link";
@@ -63,11 +64,8 @@ export default async function AlumniPage({
   if (stage) query = query.eq("stage", stage);
   if (leadType) query = query.contains("deal_types", [leadType]);
   if (tag) query = query.contains("tags", [tag]);
-  if (search) {
-    const like = `%${search.replace(/[,()]/g, " ")}%`;
-    query = query.or(
-      `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},city.ilike.${like}`
-    );
+  for (const group of search ? searchTerms(search) : []) {
+    query = query.or(group);
   }
 
   const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);

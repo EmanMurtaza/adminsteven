@@ -11,7 +11,7 @@ import {
   queryString,
 } from "@/components/ui/FilterBar";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
-import { Contact, DEFAULT_STAGE, LEAD_TYPES, STAGES } from "@/lib/contacts";
+import { Contact, DEFAULT_STAGE, LEAD_TYPES, STAGES, searchTerms } from "@/lib/contacts";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -97,16 +97,11 @@ export default async function ContactsPage({
   if (source) query = query.eq("source", source);
   // Array containment, served by contacts_tags_idx (GIN).
   if (tag) query = query.contains("tags", [tag]);
-  if (search) {
-    // Strip the delimiters PostgREST uses inside or() so a comma or bracket in
-    // the search box cannot split into bogus conditions.
-    const like = `%${search.replace(/[,()]/g, " ")}%`;
-    // Location and company are in here because "who do I know in Round Rock"
-    // is a question this list gets asked far more often than an exact
-    // name lookup.
-    query = query.or(
-      `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},city.ilike.${like},state.ilike.${like},company.ilike.${like}`
-    );
+  // One or() group per word, ANDed — so "Rafael Diaz" matches a contact whose
+  // first and last name live in different columns, which the old single-field
+  // search never could. See searchTerms in lib/contacts.
+  for (const group of search ? searchTerms(search) : []) {
+    query = query.or(group);
   }
 
   const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);

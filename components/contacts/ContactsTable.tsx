@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Trash2, ChevronDown, Mail, Phone, CalendarClock, Check } from "lucide-react";
 import {
   Contact,
@@ -114,7 +115,125 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
   }
 
   return (
-    <div className="relative bg-white border border-gold/25 rounded-xl shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]">
+    <>
+    {/* ── Phones: cards, not a ten-column table ────────────────────────────
+        The desktop table is 1428px wide. Sideways-scrolling that on a 375px
+        screen is not a table, it is a hardship — and this codebase already
+        answers the question the same way for listings, blog posts and
+        inquiries. Every field still appears; it stacks instead of scrolling. */}
+    <div className="sm:hidden space-y-3">
+      {contacts.map((c) => {
+        const due = c.next_follow_up && c.next_follow_up <= today;
+        return (
+          <div
+            key={c.id}
+            className={`bg-white border rounded-xl p-4 shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)] ${
+              due ? "border-gold border-l-4" : "border-gold/25"
+            }`}
+          >
+            {/* The name gets the full width. Sharing a row with the stage
+                control squeezed it into "Rafael / Diaz" on a 375px screen. */}
+            <div className="min-w-0">
+              <Link
+                href={`/contacts/${c.id}`}
+                className="font-serif text-lg text-navy leading-tight hover:text-gold-dark transition-colors break-words"
+              >
+                {contactName(c)}
+              </Link>
+              <Stars rating={c.rating} />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 mt-2.5">
+              <div className="w-[150px] shrink-0">
+                <StageSelect
+                  value={c.stage}
+                  disabled={pending === c.id}
+                  onChange={(stage) => patch(c.id, { stage })}
+                />
+              </div>
+              <RoleBadges contact={c} />
+            </div>
+
+            <div className="flex flex-col gap-1.5 mt-3">
+              {c.email && (
+                <a href={`mailto:${c.email}`} className="flex items-center gap-2 text-sm text-ink-soft break-all">
+                  <Mail size={13} className="shrink-0 text-ink-mute" />
+                  {c.email}
+                </a>
+              )}
+              {c.phone && (
+                <a href={`tel:${c.phone}`} className="flex items-center gap-2 text-sm text-ink-soft">
+                  <Phone size={13} className="shrink-0 text-ink-mute" />
+                  {c.phone}
+                </a>
+              )}
+            </div>
+
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 pt-3 border-t border-gold/15 text-xs">
+              <MobileFact label="Location" value={locationOf(c)} />
+              <MobileFact label="Source" value={c.source} />
+              <MobileFact
+                label="Last visit"
+                value={c.last_visit_at ? formatDate(c.last_visit_at) : null}
+              />
+              <MobileFact label="Created" value={formatDate(c.first_seen_at ?? c.created_at)} />
+            </dl>
+
+            {c.tags?.length > 0 && (
+              <div className="mt-3">
+                <TagList tags={c.tags} />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gold/15">
+              <div className="flex-1 min-w-0">
+                <label className="block text-[10px] uppercase tracking-[0.12em] text-ink-mute mb-1">
+                  Follow up
+                </label>
+                <input
+                  type="date"
+                  value={c.next_follow_up ?? ""}
+                  onChange={(e) => patch(c.id, { next_follow_up: e.target.value || null })}
+                  disabled={pending === c.id}
+                  aria-label="Next follow-up date"
+                  className={`w-full bg-white border rounded-md px-2 py-2 text-sm ${
+                    due ? "border-gold text-ink" : "border-gold/30 text-ink-mute"
+                  }`}
+                />
+              </div>
+              <div className="flex items-center gap-1 self-end">
+                <button
+                  onClick={() =>
+                    patch(c.id, {
+                      last_contacted_at: new Date().toISOString(),
+                      stage: c.stage === "new_lead" ? "prospect" : c.stage,
+                    })
+                  }
+                  disabled={pending === c.id}
+                  aria-label="Mark as contacted today"
+                  className="p-2.5 rounded-md text-ink-soft hover:text-gold-dark hover:bg-gold/12 transition-colors disabled:opacity-40"
+                >
+                  <Check size={17} />
+                </button>
+                {onDelete && (
+                  <button
+                    onClick={() => handleDelete(c)}
+                    disabled={pending === c.id}
+                    aria-label={`Delete ${contactName(c)}`}
+                    className="p-2.5 rounded-md text-ink-soft hover:text-burgundy hover:bg-burgundy/10 transition-colors disabled:opacity-40"
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* ── Desktop table ─────────────────────────────────────────────────── */}
+    <div className="hidden sm:block relative bg-white border border-gold/25 rounded-xl shadow-[0_2px_20px_-8px_rgba(14,27,48,0.08)]">
       {/* Ten columns do not fit a laptop beside a 256px sidebar, so the table
           scrolls. These shadows are what stop that reading as "the other
           columns are missing" — they appear only on the side that actually has
@@ -190,18 +309,23 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                         due ? "from-gold/[0.06] to-gold/[0.06]" : "from-transparent to-transparent"
                       }`}
                     >
+                      <Link
+                        href={`/contacts/${c.id}`}
+                        className="block text-navy font-medium hover:text-gold-dark transition-colors"
+                      >
+                        {contactName(c)}
+                      </Link>
+                      {/* The row still expands in place — a quick look without
+                          losing your position in a 25-row page — but the name
+                          now goes to the contact's own page, where the record
+                          can actually be edited. */}
                       <button
                         onClick={() => setExpanded(open ? null : c.id)}
                         aria-expanded={open}
-                        className="text-left group"
+                        className="flex items-center gap-1 text-[11px] text-gold-dark hover:text-navy transition-colors mt-0.5"
                       >
-                        <span className="text-navy font-medium group-hover:text-gold-dark transition-colors">
-                          {contactName(c)}
-                        </span>
-                        <span className="flex items-center gap-1 text-[11px] text-gold-dark mt-0.5">
-                          {open ? "Hide" : "Details"}
-                          <ChevronDown size={11} className={open ? "rotate-180" : ""} />
-                        </span>
+                        {open ? "Hide" : "Details"}
+                        <ChevronDown size={11} className={open ? "rotate-180" : ""} />
                       </button>
                       {/* Rating rides with the name instead of holding a column
                           of its own: it is two characters wide and only set on
@@ -425,6 +549,13 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
                             )}
                           </dl>
                         </div>
+                        <Link
+                          href={`/contacts/${c.id}`}
+                          className="inline-flex items-center gap-1.5 text-sm text-gold-dark hover:text-navy transition-colors mt-4"
+                        >
+                          Open full record
+                          <span aria-hidden>›</span>
+                        </Link>
                         <ExternalNotes notes={c.external_notes} />
                         <RawDetails raw={c.raw} />
                       </td>
@@ -437,6 +568,7 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
         </table>
       </div>
     </div>
+    </>
   );
 }
 
@@ -448,6 +580,18 @@ export default function ContactsTable({ contacts, onUpdate, onDelete }: Props) {
  * when it means "never rated" — the two are not the same and only one of them
  * is a reason to skip someone.
  */
+/** One labelled fact in a mobile card. Empty ones still show, so the card and
+ *  the table disclose the same thing — a card that hides blanks looks complete
+ *  when it is not. */
+function MobileFact({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] uppercase tracking-[0.12em] text-ink-mute">{label}</dt>
+      <dd className="text-ink-soft mt-0.5 break-words">{value || "—"}</dd>
+    </div>
+  );
+}
+
 /** An empty cell, said once so "no data" looks the same everywhere. */
 function Dash() {
   return <span className="text-ink-mute">—</span>;

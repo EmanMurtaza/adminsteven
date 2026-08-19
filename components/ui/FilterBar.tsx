@@ -46,7 +46,7 @@ export function FilterBar({
           commit what you typed in the search box. */}
       <button
         type="submit"
-        className="border border-navy/30 text-navy hover:bg-navy hover:text-cream px-5 py-2.5 rounded-md text-sm font-medium transition-colors shrink-0"
+        className="flex-1 sm:flex-none border border-navy/30 text-navy hover:bg-navy hover:text-cream px-5 py-2.5 rounded-md text-sm font-medium transition-colors shrink-0"
       >
         Apply
       </button>
@@ -77,7 +77,7 @@ export function SearchField({
   name?: string;
 }) {
   return (
-    <div className="relative flex-1 min-w-56 max-w-md">
+    <div className="relative flex-1 basis-full sm:basis-auto min-w-0 sm:min-w-56 max-w-full sm:max-w-md">
       <Search
         size={15}
         className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
@@ -114,7 +114,7 @@ export function TextField({
       defaultValue={value ?? ""}
       placeholder={placeholder}
       aria-label={placeholder}
-      className={`${controlClass} w-40 placeholder-ink-mute/60`}
+      className={`${controlClass} w-full sm:w-40 placeholder-ink-mute/60`}
     />
   );
 }
