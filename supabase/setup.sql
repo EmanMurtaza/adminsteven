@@ -298,19 +298,56 @@ update public.contacts
 
 alter table public.contacts alter column stage set default 'new_lead';
 
--- Back-fill the contacts imported before their status was understood, from the
--- payload already stored — no BoldTrail requests, and it is the same mapping
--- stageFromStatus applies.
+-- Seed the stage from BoldTrail's status, from the payload already stored — no
+-- BoldTrail requests, and the same mapping stageFromStatus applies.
 --
 -- This reads `external_raw`, which is why section 2c has to come first: on a
 -- database being built from scratch that column does not exist until then, and
 -- this statement would fail rather than quietly do nothing.
 --
--- `stage = 'new_lead'` is the guard that makes this safe to re-run: a contact
--- still sitting on the default is one nobody has moved, so there is nothing to
--- overwrite. Anything Steven has since dragged elsewhere is left where he put it.
+-- THE CODES ARE NOT POSITIONAL. An earlier version of this file read them as an
+-- index into the list above — 0 New Lead, 1 Prospect, 2 Sphere, 3 Active Lead —
+-- and got four of the five wrong, most visibly filing 638 Spheres as Active
+-- Leads. The mapping below was derived by matching per-code counts against the
+-- totals BoldTrail's own UI reports; their API returns the number and never a
+-- label. Codes 2, 5 and 6 have no contacts here and are left unmapped rather
+-- than guessed at twice. Keep this in step with STATUS_TO_STAGE in
+-- lib/boldtrail/mapping.ts.
+--
+-- `stage = 'new_lead'` is the guard: a contact still on the default is one
+-- nobody has moved, so there is nothing to overwrite.
 update public.contacts
    set stage = case external_raw->>'status'
+         when '0' then 'new_lead'
+         when '1' then 'client'
+         when '3' then 'sphere'
+         when '4' then 'active_lead'
+         when '7' then 'prospect'
+         else stage
+       end
+ where external_id is not null
+   and stage = 'new_lead'
+   and external_raw ? 'status';
+
+-- Correct the contacts imported while the positional mapping was in force.
+--
+-- The guard above cannot reach them: they are already sitting on a stage, just
+-- the wrong one. This one matches each row against exactly what the old mapping
+-- would have produced, so a stage moved by hand since then is left alone.
+--
+-- Idempotent: once corrected, no row satisfies the second CASE any more.
+update public.contacts
+   set stage = case external_raw->>'status'
+         when '0' then 'new_lead'
+         when '1' then 'client'
+         when '3' then 'sphere'
+         when '4' then 'active_lead'
+         when '7' then 'prospect'
+         else stage
+       end
+ where external_id is not null
+   and external_raw ? 'status'
+   and stage = case external_raw->>'status'
          when '0' then 'new_lead'
          when '1' then 'prospect'
          when '2' then 'sphere'
@@ -320,10 +357,7 @@ update public.contacts
          when '6' then 'closed'
          when '7' then 'archived'
          else stage
-       end
- where external_id is not null
-   and stage = 'new_lead'
-   and external_raw ? 'status';
+       end;
 
 do $$ begin
   alter table public.contacts add constraint contacts_stage_check
@@ -390,6 +424,53 @@ create trigger contacts_touch_updated_at
 -- refused. The admin panel reads and writes through the service role, which
 -- bypasses RLS, only after confirming a signed-in admin.
 alter table public.contacts enable row level security;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  2f. contact_tags — the saved hashtag vocabulary
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- WHY A TABLE, WHEN THE TAGS ARE ALREADY ON THE CONTACTS
+-- `contacts.tags` records which tags a contact HAS. It cannot record that a tag
+-- EXISTS. Until this table, the vocabulary was whatever happened to be in use at
+-- that moment: untag the last contact carrying "cashbuyer" and the tag was gone
+-- — not archived, not disabled, gone, along with any chance of picking it from a
+-- list. That also made every tag input a free-text box, which is how the same
+-- idea ended up spelled "Client", "client", "Seller" and "buyer".
+--
+-- So a tag gets a row. The row is the tag; `contacts.tags` is the association.
+
+create table if not exists public.contact_tags (
+  -- Canonical form: lower-cased, and what `contacts.tags` stores. Postgres
+  -- array containment is exact, so "Client" and "client" are two different tags
+  -- to every filter in the app — the normalisation is not cosmetic.
+  name       text primary key,
+  -- How it is shown. Preserves the casing it first arrived with, so a tag that
+  -- came in as "MoningAssociates" still reads that way in a picker.
+  label      text not null,
+  -- 'boldtrail' (arrived on a sync), 'import' (a CSV batch marker) or 'manual'.
+  source     text not null default 'manual',
+  -- Batch markers like `import20251007-1985a` are real tags on real contacts and
+  -- must not be deleted, but they are provenance rather than vocabulary and
+  -- would crowd out the useful ones in a list of 44.
+  is_hidden  boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+do $$ begin
+  alter table public.contact_tags add constraint contact_tags_source_check
+    check (source in ('manual', 'boldtrail', 'import'));
+exception when duplicate_object then null;
+end $$;
+
+-- A picker lists the visible tags alphabetically; nothing else queries this.
+create index if not exists contact_tags_visible_idx
+  on public.contact_tags (name)
+  where is_hidden = false;
+
+-- Same posture as `contacts`: RLS on, no policies, service role only. Tag names
+-- in this account describe real client segments and are not public.
+alter table public.contact_tags enable row level security;
 
 
 -- ═══════════════════════════════════════════════════════════════════════════

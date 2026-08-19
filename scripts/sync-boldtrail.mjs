@@ -195,6 +195,7 @@ async function runExtras() {
 
   let done = 0, withTags = 0, withNotes = 0, failed = 0;
   let notesColumnWarned = false;
+  let tagVocabWarned = false;
   let notesSkipped = false;
   const startedAt = Date.now();
 
@@ -210,17 +211,39 @@ async function runExtras() {
       process.exit(1);
     }
 
+    // Lower-cased on the way in. Postgres array containment is exact, so a tag
+    // stored as "Client" is invisible to every filter looking for "client" —
+    // letting BoldTrail's casing through is what created the duplicates that
+    // scripts/backfill-tags.mjs had to fold.
     const remoteTags = (tagPayload?.tags ?? [])
       .map((t) => (typeof t === "string" ? t : t?.name))
       .filter(Boolean)
-      .map((t) => String(t).trim())
+      .map((t) => String(t).trim().replace(/^#+/, "").replace(/\s+/g, "-").toLowerCase())
       .filter(Boolean);
 
     const notes = (notePayload?.notes ?? []).filter(Boolean);
 
     // Union, never subtract: a tag added here by hand must survive a sync, and
     // there is no way to tell "removed in BoldTrail" from "added locally".
-    const merged = [...new Set([...(target.tags ?? []), ...remoteTags])];
+    const merged = [...new Set([...(target.tags ?? []).map((t) => String(t).toLowerCase()), ...remoteTags])];
+
+    // Register anything new, so a tag that arrives on a sync is immediately
+    // offered by every picker. ignoreDuplicates so a tag already renamed or
+    // hidden by hand is not reset.
+    if (remoteTags.length) {
+      const { error: tagError } = await supabase
+        .from("contact_tags")
+        .upsert(
+          remoteTags.map((name) => ({ name, label: name, source: "boldtrail" })),
+          { onConflict: "name", ignoreDuplicates: true }
+        );
+      if (tagError && !tagVocabWarned) {
+        console.log(`  ! could not record tags in contact_tags: ${tagError.message}`);
+        console.log("    Apply supabase/setup.sql, then re-run.
+");
+        tagVocabWarned = true;
+      }
+    }
 
     let { error } = await supabase
       .from("contacts")

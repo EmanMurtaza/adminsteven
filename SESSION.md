@@ -188,33 +188,74 @@ Vercel production env vars: `BOLDTRAIL_API_TOKEN`, `BOLDTRAIL_API_BASE`,
 
 ---
 
-## Lead status — resolved
+## Lead status — the codes are NOT positional
 
-Their `status` is an index into BoldTrail's own status list, and the panel's
-pipeline now uses that vocabulary instead of the invented
-new/contacted/qualified/active/closed/lost:
+The first version of this read BoldTrail's numeric `status` as an index into the
+order their statuses are displayed in — `STAGES[code]`. That was wrong, and it
+mislabelled four of the five codes in this account. Most visibly, the **638
+Spheres were showing as Active Leads**.
 
-| | | | |
+Their API returns the number and never a label, so the mapping was established
+by matching our per-code counts against the totals BoldTrail's own UI reports:
+
+| code | contacts | label | had been |
 |---|---|---|---|
-| `0` New Lead | `1` Prospect | `2` Sphere | `3` Active Lead |
-| `4` Client | `5` Contract | `6` Closed | `7` Archived |
+| `0` | 109 | New Lead | New Lead ✓ |
+| `1` | 13 | **Client** | Prospect |
+| `3` | 638 | **Sphere** | Active Lead |
+| `4` | 27 | **Active Lead** | Client |
+| `7` | 191 | **Prospect** | Archived |
 
-This account uses five: **0** (109), **1** (13), **3** (638), **4** (27),
-**7** (191). All eight are mapped anyway — a status Steven has not used yet is
-not one that cannot appear tomorrow.
+Codes `2`, `5` and `6` hold no contacts here, so there is nothing to match them
+against. They are Contract, Closed and Archived in some order and are left
+**unmapped** rather than guessed at a second time — `takeUnmappedStatuses` in
+`lib/boldtrail/mapping.ts` records any that appear into `sync_runs.detail`, so a
+new code announces itself instead of quietly becoming a New Lead.
 
-The order is load-bearing in three places at once: `STAGES` in `lib/contacts.ts`,
-`stageFromStatus` in `lib/boldtrail/mapping.ts`, and the CHECK constraint in
-`setup.sql`. Inserting a stage in the middle would silently re-label hundreds of
-contacts, so a new one goes on the end.
+BoldTrail reports 4 Archived contacts and none of them reach us: their list
+endpoint appears to exclude archived records, which is why we hold 978 of their
+982.
+
+The correction ran over the 978 already imported, guarded so that any stage
+moved by hand survives — 869 rows changed, 0 hand-moved rows touched. Resulting
+distribution: Sphere 638 · Prospect 192 · New Lead 111 · Active Lead 30 ·
+Client 13. (The four small excesses over BoldTrail's own counts are the six
+contacts that never came from BoldTrail.)
+
+`STAGES` order in `lib/contacts.ts` is unchanged — the display order was always
+right; only the code→stage translation was wrong. Do not re-derive one from the
+other.
 
 BoldTrail decides where a contact *starts* and nothing more. `stage` is in
 `INSERT_COLUMNS` but deliberately not in `UPDATE_COLUMNS`, so a later pull never
-moves a card Steven has moved, and it is never pushed back either — there is
-still no deals object to push it to. The 978 already-imported contacts are
-corrected by the back-fill in `setup.sql` section 2d, which reads the stored
-payload and costs no API calls; `remapStoredDetails` applies the same rule for
-any future mapping change.
+moves a card Steven has moved, and it is never pushed back either.
+
+---
+
+## Hashtags
+
+Tags now have a table of their own, `contact_tags`. Before it, `contacts.tags`
+recorded which tags a contact *has* but nothing recorded that a tag *exists* —
+untag the last contact carrying "cashbuyer" and the tag was gone, along with any
+chance of picking it from a list. Every tag input was therefore free text, which
+is how one idea ended up stored as `Client`, `client` and `Seller`.
+
+- **Canonical form is lower case.** Postgres array containment is exact, so a
+  contact stored as `Client` was invisible to every filter looking for `client`.
+  Nine tags were folded across 76 contact rows by
+  `scripts/backfill-tags.mjs`; both write paths lower-case from now on.
+- **44 tags**, six of them `import<digits>` batch markers flagged `is_hidden` —
+  real tags on real contacts, but provenance rather than vocabulary, so they
+  stay out of pickers unless searched for by name.
+- **One picker everywhere** (`TagPicker`): the contact page, the add-contact
+  form on three screens, and the Hashtags column filter. Search, usage counts,
+  and "Create «foo»" for something genuinely new.
+- **Filtering is `overlaps`, not `contains`** — picking `investor` and `crexi`
+  means either, the same rule Type and Stage already follow.
+- Every path that can invent a tag calls `registerTags`, so a tag used once is
+  immediately offered everywhere else. A sync registers BoldTrail's tags the
+  same way, which is what makes an imported contact arrive with its hashtags
+  already known.
 
 ---
 

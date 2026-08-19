@@ -2,8 +2,9 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useState } from "react";
-import { LEAD_TYPES, STAGES } from "@/lib/contacts";
+import { LEAD_TYPES, STAGES, type TagOption } from "@/lib/contacts";
 import MultiSelectFilter from "./MultiSelectFilter";
+import TagPicker from "./TagPicker";
 
 // Per-column filters, living in a second header row so each one sits under the
 // column it filters.
@@ -25,7 +26,7 @@ export interface ColumnFilterValues {
   stage?: string[];
   location?: string;
   source?: string;
-  tag?: string;
+  tag?: string[];
   visited?: string;
   followed?: string;
   due?: string;
@@ -38,7 +39,14 @@ const DATE_WINDOWS = [
   { value: "none", label: "Never" },
 ];
 
-export default function ColumnFilters({ values }: { values: ColumnFilterValues }) {
+export default function ColumnFilters({
+  values,
+  tagOptions = [],
+}: {
+  values: ColumnFilterValues;
+  /** The saved hashtag vocabulary, so the filter is a picker not a spelling test. */
+  tagOptions?: TagOption[];
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -94,7 +102,14 @@ export default function ColumnFilters({ values }: { values: ColumnFilterValues }
         <TextFilter placeholder="Source…" value={values.source} onCommit={(v) => apply("source", v)} />
       </Cell>
       <Cell>
-        <TextFilter placeholder="Hashtag…" value={values.tag} onCommit={(v) => apply("tag", v)} />
+        {/* A picker, not a text box: with 44 tags in play, filtering used to
+            mean typing `openhouse21067952-2025-11-02` exactly right. */}
+        <TagPicker
+          compact
+          options={tagOptions}
+          values={values.tag ?? []}
+          onChange={(v) => apply("tag", v)}
+        />
       </Cell>
       <Cell>
         <SelectFilter

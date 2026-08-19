@@ -11,7 +11,12 @@ import {
   clientFromEnv,
   tokenFingerprint,
 } from "./client";
-import { fromDetailContact, fromListContact, type MappedContact } from "./mapping";
+import {
+  fromDetailContact,
+  fromListContact,
+  takeUnmappedStatuses,
+  type MappedContact,
+} from "./mapping";
 import { DEFAULT_STAGE, type ExternalNote } from "../contacts";
 import { lastFollowUpAt } from "./activity";
 import { localFingerprint, remoteFingerprint } from "./hash";
@@ -289,7 +294,14 @@ export async function pullContacts(
           requests_made: result.requests,
           finished_at: new Date().toISOString(),
           error: result.error ?? null,
-          detail: { telemetry: client.telemetry(), remoteDeleted: result.remoteDeleted },
+          detail: {
+            telemetry: client.telemetry(),
+            remoteDeleted: result.remoteDeleted,
+            // Any BoldTrail status code this build has no translation for.
+            // Empty is the expected value; anything here means a status exists
+            // that is currently being filed under the default stage.
+            unmappedStatuses: takeUnmappedStatuses(),
+          },
         })
         .eq("id", runId);
     }

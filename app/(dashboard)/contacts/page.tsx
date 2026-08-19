@@ -18,6 +18,9 @@ import {
   columnFilterParams,
   hasColumnFilters,
   multiParam,
+  loadTagVocabulary,
+  normalizeTag,
+  registerTags,
   searchTerms,
 } from "@/lib/contacts";
 import Link from "next/link";
@@ -64,7 +67,10 @@ export default async function ContactsPage({
   const search = str(params.q)?.trim();
   // Free text rather than a dropdown: tags come from whatever the last import
   // contained, and listing them all would mean reading every row.
-  const tag = str(params.tag)?.trim();
+  const tag = str(params.tag)
+    ?.split(",")
+    .map((t) => normalizeTag(t))
+    .filter(Boolean);
   const page = Math.max(1, Number(str(params.page) ?? "1") || 1);
   const from = (page - 1) * PAGE_SIZE;
   const today = todayISO();
@@ -122,6 +128,10 @@ export default async function ContactsPage({
 
   const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);
 
+  // The saved hashtags, so the filter row offers a picker rather than a
+  // spelling test. Empty until supabase/setup.sql creates contact_tags.
+  const tagOptions = await loadTagVocabulary(supabase);
+
   if (error) {
     const missing = error.message.includes("contacts");
     return (
@@ -169,6 +179,8 @@ export default async function ContactsPage({
     const phone = input.phone.trim();
     if (!email && !phone) return { error: "Add an email or phone number." };
 
+    await registerTags(supabase, input.tags);
+
     const { error } = await supabase.from("contacts").insert({
       first_name: input.first_name.trim() || null,
       last_name: input.last_name.trim() || null,
@@ -180,6 +192,7 @@ export default async function ContactsPage({
       stage: input.stage,
       source: input.source.trim() || "manual",
       notes: input.notes.trim() || null,
+      tags: input.tags.map(normalizeTag).filter(Boolean),
     });
 
     if (error) {
@@ -284,7 +297,7 @@ export default async function ContactsPage({
             href={(key) => qs({ view: key === "all" ? undefined : key })}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <AddContactModal onCreate={createContact} />
+            <AddContactModal onCreate={createContact} tagOptions={tagOptions} />
             <ImportWebsiteButton action={importFromWebsite} />
             <Link
               href="/contacts/alumni"
@@ -358,6 +371,7 @@ export default async function ContactsPage({
             onUpdate={updateContact}
             onDelete={deleteContact}
             columnFilters={columnFilters}
+            tagOptions={tagOptions}
           />
         )}
 

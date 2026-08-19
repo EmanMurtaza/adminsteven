@@ -303,6 +303,37 @@ export function searchTerms(search: string): string[] {
     .filter(Boolean);
 }
 
+// ─── Hashtags ────────────────────────────────────────────────────────────────
+
+/** One hashtag as a picker sees it. */
+export interface TagOption {
+  /** Canonical, lower-case. This is what `contacts.tags` stores. */
+  name: string;
+  /** Display form, preserving the casing it first arrived with. */
+  label: string;
+  /** How many contacts carry it. Absent when the count was not asked for. */
+  count?: number;
+  /** Import batch markers — real, but provenance rather than vocabulary. */
+  hidden?: boolean;
+}
+
+/**
+ * The canonical form of a tag.
+ *
+ * Lower-cased because Postgres array containment is exact: a contact stored
+ * with "Client" is invisible to every filter looking for "client", so casing is
+ * a correctness problem rather than a tidiness one. A leading "#" is stripped
+ * because that is how people type a hashtag, and the spaces go because a tag
+ * with one in it cannot be typed into a comma-separated URL param.
+ */
+export function normalizeTag(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^#+/, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+}
+
 // ─── Alumni ──────────────────────────────────────────────────────────────────
 
 /**
@@ -655,7 +686,8 @@ export interface ColumnFilters {
   stage?: string[];
   location?: string;
   source?: string;
-  tag?: string;
+  /** Several at once, ORed — a contact tagged either way belongs in the result. */
+  tag?: string[];
   visited?: string;
   followed?: string;
   due?: string;
@@ -750,7 +782,10 @@ export function applyColumnFilters<Q extends Filterable>(
   // shows every role: someone buying and selling belongs under both.
   if (f.type?.length) q = q.overlaps("deal_types", f.type);
   if (f.stage?.length) q = q.in("stage", f.stage);
-  if (f.tag) q = q.contains("tags", [f.tag]);
+  // Same "any of, not all of" argument as type above: picking `investor` and
+  // `crexi` means either. Containment would demand both and quietly return the
+  // overlap while looking like it worked.
+  if (f.tag?.length) q = q.overlaps("tags", f.tag);
 
   // "none" means the column is empty; a number means "within that many days".
   // A vocabulary rather than a date picker, because "who have I not touched in
@@ -789,4 +824,98 @@ export function columnFilterParams(f: ColumnFilters): Record<string, string | un
     if (joined) out[key === "source" ? "source_q" : key] = joined;
   }
   return out;
+}
+
+// ─── Tag vocabulary ──────────────────────────────────────────────────────────
+
+/** Just the Supabase methods `loadTagVocabulary` needs. */
+interface TagSource {
+  from(table: string): {
+    select(columns: string): {
+      order(column: string, opts: { ascending: boolean }): Promise<{
+        data: unknown[] | null;
+        error: { message: string } | null;
+      }>;
+    };
+  };
+}
+
+/**
+ * Every saved hashtag, with how many contacts carry it.
+ *
+ * Reads `contact_tags` for the vocabulary and `contacts.tags` for the counts.
+ * The two are separate on purpose: a tag exists whether or not anyone currently
+ * has it, so the registry is the list and the contacts are only the tally.
+ *
+ * Returns an empty list rather than throwing when `contact_tags` is missing, so
+ * a database that has not had setup.sql applied yet degrades to "no suggestions"
+ * instead of a broken contacts page.
+ */
+export async function loadTagVocabulary(supabase: unknown): Promise<TagOption[]> {
+  const db = supabase as TagSource;
+
+  const [registry, usage] = await Promise.all([
+    db.from("contact_tags").select("name, label, is_hidden").order("name", { ascending: true }),
+    db.from("contacts").select("tags").order("id", { ascending: true }),
+  ]);
+
+  if (registry.error) return [];
+
+  const counts = new Map<string, number>();
+  for (const row of (usage.data ?? []) as { tags: string[] | null }[]) {
+    for (const tag of row.tags ?? []) {
+      const name = tag.toLowerCase();
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+
+  return ((registry.data ?? []) as { name: string; label: string; is_hidden: boolean }[]).map(
+    (t) => ({
+      name: t.name,
+      label: t.label || t.name,
+      count: counts.get(t.name) ?? 0,
+      hidden: t.is_hidden,
+    })
+  );
+}
+
+/** Just the Supabase surface `registerTags` needs. */
+interface TagWritable {
+  from(table: string): {
+    upsert(
+      rows: { name: string; label: string; source: string }[],
+      options: { onConflict: string; ignoreDuplicates: boolean }
+    ): Promise<{ error: { message: string } | null }>;
+  };
+}
+
+/**
+ * Add tags to the saved vocabulary, leaving any that already exist alone.
+ *
+ * Called from every path that can invent a tag — the contact page, the add
+ * form, the sync — so a tag becomes pickable everywhere the moment it is used
+ * once. `ignoreDuplicates` matters: a tag someone has already relabelled or
+ * hidden must not be silently reset by the next contact that happens to use it.
+ *
+ * Never throws. Failing to record a tag in the registry is not a reason to fail
+ * the write that was actually asked for; the tag still lands on the contact and
+ * scripts/backfill-tags.mjs will pick it up.
+ */
+export async function registerTags(
+  supabase: unknown,
+  tags: string[],
+  source: "manual" | "boldtrail" | "import" = "manual"
+): Promise<void> {
+  const names = [...new Set(tags.map(normalizeTag).filter(Boolean))];
+  if (names.length === 0) return;
+  try {
+    await (supabase as TagWritable)
+      .from("contact_tags")
+      .upsert(
+        names.map((name) => ({ name, label: name, source })),
+        { onConflict: "name", ignoreDuplicates: true }
+      );
+  } catch {
+    // contact_tags may not exist yet; the contact write still stands.
+  }
 }

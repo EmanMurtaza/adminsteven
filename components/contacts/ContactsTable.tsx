@@ -14,6 +14,7 @@ import { formatDate } from "@/lib/format";
 import RoleBadges from "./RoleBadges";
 import StageSelect from "./StageSelect";
 import ColumnFilters, { type ColumnFilterValues } from "./ColumnFilters";
+import type { TagOption } from "@/lib/contacts";
 import RawDetails from "./RawDetails";
 import ExternalNotes from "./ExternalNotes";
 
@@ -23,6 +24,8 @@ interface Props {
   onDelete?: (id: string) => Promise<{ error?: string }>;
   /** Per-column filter values, from the URL. Omit to hide the filter row. */
   columnFilters?: ColumnFilterValues;
+  /** Saved hashtags, for the filter row's picker. */
+  tagOptions?: TagOption[];
 }
 
 // Warm for a lead being worked, cool for one parked, grey once it is finished.
@@ -65,6 +68,7 @@ export default function ContactsTable({
   onUpdate,
   onDelete,
   columnFilters,
+  tagOptions,
 }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -296,7 +300,7 @@ export default function ContactsTable({
                 Actions
               </th>
             </tr>
-            {columnFilters && <ColumnFilters values={columnFilters} />}
+            {columnFilters && <ColumnFilters values={columnFilters} tagOptions={tagOptions} />}
           </thead>
           <tbody>
             {contacts.map((c) => {

@@ -11,6 +11,7 @@ import {
   STAGE_TONES,
   contactName,
   isAlumni,
+  loadTagVocabulary,
   stageLabel,
   type Stage,
 } from "@/lib/contacts";
@@ -63,19 +64,10 @@ export default async function ContactPage({
   const contact = data as Contact;
   const isLinked = Boolean(contact.external_id);
 
-  // Tags already in use, so adding one offers the existing spelling rather than
-  // starting a near-duplicate. Capped: this only needs to seed a suggestion
-  // list, not enumerate every tag in the account.
-  const { data: tagRows } = await supabase
-    .from("contacts")
-    .select("tags")
-    .not("tags", "eq", "{}")
-    .limit(400);
-  const suggestions = [
-    ...new Set((tagRows ?? []).flatMap((r: { tags: string[] }) => r.tags ?? [])),
-  ]
-    .filter((t) => !/^import\d/.test(t)) // batch markers are noise as suggestions
-    .sort();
+  // The saved vocabulary, so the picker offers what already exists before it
+  // offers to invent something. Reads contact_tags, not a scrape of whatever
+  // tags happen to be on contacts right now.
+  const tagOptions = await loadTagVocabulary(supabase);
 
   async function save(patch: Record<string, unknown>) {
     "use server";
@@ -94,6 +86,18 @@ export default async function ContactPage({
 
   async function saveTags(tags: string[]) {
     "use server";
+    const supabase = await createAuthedServiceClient();
+    if (!supabase) return { error: "Not signed in — please log in again." };
+
+    // Register anything new before writing it onto the contact, so a tag
+    // invented here is immediately offered everywhere else. ignoreDuplicates
+    // because a tag someone has already renamed or hidden must not be reset.
+    const rows = tags.map((name) => ({ name, label: name, source: "manual" }));
+    if (rows.length) {
+      await supabase
+        .from("contact_tags")
+        .upsert(rows, { onConflict: "name", ignoreDuplicates: true });
+    }
     return save({ tags });
   }
 
@@ -223,7 +227,7 @@ export default async function ContactPage({
             <Panel title="Hashtags">
               <TagEditor
                 tags={contact.tags ?? []}
-                suggestions={suggestions}
+                options={tagOptions}
                 syncedFromBoldTrail={isLinked}
                 onSave={saveTags}
               />

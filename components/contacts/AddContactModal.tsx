@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserPlus, X } from "lucide-react";
-import { DEFAULT_STAGE, LEAD_TYPES, STAGES, LeadType, Stage } from "@/lib/contacts";
+import { DEFAULT_STAGE, LEAD_TYPES, STAGES, LeadType, Stage, type TagOption } from "@/lib/contacts";
+import TagPicker from "./TagPicker";
 
 export interface NewContactInput {
   first_name: string;
@@ -14,10 +15,13 @@ export interface NewContactInput {
   stage: Stage;
   source: string;
   notes: string;
+  tags: string[];
 }
 
 interface Props {
   onCreate: (input: NewContactInput) => Promise<{ error?: string }>;
+  /** The saved hashtag vocabulary. */
+  tagOptions?: TagOption[];
 }
 
 const EMPTY: NewContactInput = {
@@ -29,12 +33,13 @@ const EMPTY: NewContactInput = {
   stage: DEFAULT_STAGE,
   source: "manual",
   notes: "",
+  tags: [],
 };
 
 const inputClass =
   "w-full bg-cream-100 border border-gold/30 text-navy rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent";
 
-export default function AddContactModal({ onCreate }: Props) {
+export default function AddContactModal({ onCreate, tagOptions = [] }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -161,6 +166,21 @@ export default function AddContactModal({ onCreate }: Props) {
                 onChange={(e) => update("source", e.target.value)}
                 className={inputClass}
               />
+              {/* The same picker the contact page and the filter row use, so a
+                  tag typed here joins the vocabulary rather than starting a
+                  near-duplicate of one that already exists. */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-[0.12em] text-ink-mute mb-1">
+                  Hashtags
+                </label>
+                <TagPicker
+                  allowCreate
+                  options={tagOptions}
+                  values={form.tags}
+                  onChange={(tags) => update("tags", tags)}
+                  placeholder="Add hashtags…"
+                />
+              </div>
               <textarea
                 placeholder="Notes"
                 rows={3}

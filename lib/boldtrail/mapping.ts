@@ -1,6 +1,5 @@
 import {
   DEFAULT_STAGE,
-  STAGES,
   extractLeadTypes,
   splitName,
   type LeadType,
@@ -87,26 +86,66 @@ export const DETAIL_FIELD_MAP = {
 } as const;
 
 /**
- * Their numeric `status` is an index into BoldTrail's status list, which reads
+ * BoldTrail's numeric `status` translated into our stage vocabulary.
  *
- *   0 New Lead · 1 Prospect · 2 Sphere · 3 Active Lead
- *   4 Client   · 5 Contract · 6 Closed · 7 Archived
+ * THE CODES ARE NOT POSITIONAL. The first version of this read
+ * `STAGES[code]`, assuming the number was an index into the order BoldTrail
+ * displays its statuses in. It is not, and four of the five codes in this
+ * account were consequently mislabelled — most visibly the 638 Spheres, which
+ * every screen reported as Active Leads.
  *
- * and is exactly the order of STAGES. This account uses five of the eight —
- * 0, 1, 3, 4 and 7 — but all eight are mapped, because a status Steven has
- * never used yet is not a status that cannot appear tomorrow.
+ * The mapping below was established by matching our per-code counts against the
+ * totals BoldTrail's own UI reports, which is the only evidence available: the
+ * API returns the number and never a label.
  *
- * An unrecognised code falls back to the default stage rather than throwing or
- * guessing at a neighbour. If they add a ninth status, several hundred contacts
- * reading "New Lead" is a visible, harmless wrong; silently filing them under
- * "Closed" would not be.
+ *   code 0 → 109 contacts → New Lead
+ *   code 1 →  13 contacts → Client
+ *   code 3 → 638 contacts → Sphere
+ *   code 4 →  27 contacts → Active Lead
+ *   code 7 → 191 contacts → Prospect
+ *
+ * Codes 2, 5 and 6 hold no contacts in this account, so there is nothing to
+ * match them against. They are Contract, Closed and Archived in some order, and
+ * they stay out of this table rather than being guessed at a second time —
+ * `unmappedStatuses` below is how one would announce itself if it ever arrived.
+ *
+ * (BoldTrail reports 4 Archived contacts and none of them reach us: their list
+ * endpoint appears to exclude archived records, which is why we hold 978 of
+ * their 982.)
  */
+const STATUS_TO_STAGE: Record<number, Stage> = {
+  0: "new_lead",
+  1: "client",
+  3: "sphere",
+  4: "active_lead",
+  7: "prospect",
+};
+
+/**
+ * Codes seen in a payload that this file has no translation for.
+ *
+ * A module-level tally rather than a throw: one unrecognised status is not a
+ * reason to fail a sync, but silently filing it under the default is exactly
+ * how the mapping stayed wrong for so long. `runPull` reads this into
+ * `sync_runs.detail` so a new status code shows up in the run record instead of
+ * quietly becoming a New Lead.
+ */
+const unmapped = new Map<number, number>();
+
+export function takeUnmappedStatuses(): Record<string, number> {
+  const out = Object.fromEntries([...unmapped].map(([code, n]) => [String(code), n]));
+  unmapped.clear();
+  return out;
+}
+
 export function stageFromStatus(value: unknown): Stage {
   const code = num(value);
   if (code === null || !Number.isInteger(code)) return DEFAULT_STAGE;
-  return STAGES[code]?.value ?? DEFAULT_STAGE;
+  const stage = STATUS_TO_STAGE[code];
+  if (stage) return stage;
+  unmapped.set(code, (unmapped.get(code) ?? 0) + 1);
+  return DEFAULT_STAGE;
 }
-
 /**
  * Their four phone fields, in the order a person would actually be reached.
  * Mobile first — this is a CRM for calling people back.

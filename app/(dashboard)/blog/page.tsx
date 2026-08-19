@@ -3,6 +3,7 @@ import BlogTable from "@/components/blog/BlogTable";
 import Pagination from "@/components/ui/Pagination";
 import { FilterBar, SearchField, SelectField } from "@/components/ui/FilterBar";
 import AddContactModal, { NewContactInput } from "@/components/contacts/AddContactModal";
+import { loadTagVocabulary, normalizeTag, registerTags } from "@/lib/contacts";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { BLOG_CATEGORIES, CONTENT_STATUSES } from "@/lib/types";
 import Link from "next/link";
@@ -25,6 +26,10 @@ export default async function BlogPage({
   // Drafts are hidden from the anon key by RLS — admin reads need service role
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
+
+  // The saved hashtags, so the quick-add form's picker offers what already
+  // exists rather than only letting you invent something.
+  const tagOptions = await loadTagVocabulary(supabase);
 
   const params = await searchParams;
   const q = str(params.q)?.trim();
@@ -90,6 +95,8 @@ export default async function BlogPage({
     const phone = input.phone.trim();
     if (!email && !phone) return { error: "Add an email or phone number." };
 
+    await registerTags(supabase, input.tags);
+
     const { error } = await supabase.from("contacts").insert({
       first_name: input.first_name.trim() || null,
       last_name: input.last_name.trim() || null,
@@ -103,6 +110,7 @@ export default async function BlogPage({
       stage: input.stage,
       source: input.source.trim() || "manual",
       notes: input.notes.trim() || null,
+      tags: input.tags.map(normalizeTag).filter(Boolean),
     });
 
     if (error) {
@@ -143,7 +151,7 @@ export default async function BlogPage({
           </FilterBar>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <AddContactModal onCreate={createContact} />
+            <AddContactModal onCreate={createContact} tagOptions={tagOptions} />
             <Link
               href="/blog/new"
               className="bg-navy hover:bg-navy-500 text-cream px-4 sm:px-5 py-2.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"

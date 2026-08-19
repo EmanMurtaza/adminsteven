@@ -11,7 +11,9 @@ import {
   applyColumnFilters,
   columnFilterParams,
   hasColumnFilters,
+  loadTagVocabulary,
   multiParam,
+  normalizeTag,
   searchTerms,
 } from "@/lib/contacts";
 import Link from "next/link";
@@ -47,7 +49,10 @@ export default async function AlumniPage({
   const stage = multiParam(str(params.stage), STAGES);
   const leadType = multiParam(str(params.type), LEAD_TYPES);
   const search = str(params.q)?.trim();
-  const tag = str(params.tag)?.trim();
+  const tag = str(params.tag)
+    ?.split(",")
+    .map((t) => normalizeTag(t))
+    .filter(Boolean);
   const page = Math.max(1, Number(str(params.page) ?? "1") || 1);
   const from = (page - 1) * PAGE_SIZE;
 
@@ -82,6 +87,10 @@ export default async function AlumniPage({
   }
 
   const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);
+
+  // The saved hashtags, so the filter row offers a picker rather than a
+  // spelling test. Empty until supabase/setup.sql creates contact_tags.
+  const tagOptions = await loadTagVocabulary(supabase);
 
   // The stage mix across the whole segment, not just this page — a count that
   // changed as you paged would be worse than no count at all.
@@ -237,6 +246,7 @@ export default async function AlumniPage({
               onUpdate={updateContact}
               onDelete={deleteContact}
               columnFilters={columnFilters}
+              tagOptions={tagOptions}
             />
             <Pagination
               currentPage={page}

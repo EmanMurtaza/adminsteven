@@ -1,6 +1,7 @@
 import Header from "@/components/layout/Header";
 import AnalyticsCharts from "@/components/analytics/AnalyticsCharts";
 import AddContactModal, { NewContactInput } from "@/components/contacts/AddContactModal";
+import { loadTagVocabulary, normalizeTag, registerTags } from "@/lib/contacts";
 import { createAuthedServiceClient } from "@/lib/supabase/server";
 import { getPipelineAnalytics, getInquiryAnalytics } from "@/lib/analytics";
 import { getListingAnalytics, listListings } from "@/lib/listings";
@@ -56,6 +57,10 @@ export default async function DashboardPage() {
   const supabase = await createAuthedServiceClient();
   if (!supabase) redirect("/login");
 
+  // The saved hashtags, so the quick-add form's picker offers what already
+  // exists rather than only letting you invent something.
+  const tagOptions = await loadTagVocabulary(supabase);
+
   const [
     pipeline,
     inquiries,
@@ -77,6 +82,8 @@ export default async function DashboardPage() {
     const phone = input.phone.trim();
     if (!email && !phone) return { error: "Add an email or phone number." };
 
+    await registerTags(supabase, input.tags);
+
     const { error } = await supabase.from("contacts").insert({
       first_name: input.first_name.trim() || null,
       last_name: input.last_name.trim() || null,
@@ -88,6 +95,7 @@ export default async function DashboardPage() {
       stage: input.stage,
       source: input.source.trim() || "manual",
       notes: input.notes.trim() || null,
+      tags: input.tags.map(normalizeTag).filter(Boolean),
     });
 
     if (error) {
@@ -121,7 +129,7 @@ export default async function DashboardPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <AddContactModal onCreate={createContact} />
+            <AddContactModal onCreate={createContact} tagOptions={tagOptions} />
             <Link
               href="/listings/new"
               className="bg-navy hover:bg-navy-500 text-cream px-3.5 py-2 rounded-md text-xs font-medium transition-colors"
